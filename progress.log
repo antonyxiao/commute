@@ -1,0 +1,117 @@
+2025-12-07: Completed all tasks.
+- Backend: Express server with SQLite/GTFS. Endpoints for stops and stop_times (enriched with direction).
+- Frontend: React Native Expo app. Map component (web-compatible), StopCard with arrival times and direction toggle.
+- Validated server endpoints and data enrichment.
+- Fixed NativeWind v4 configuration: Updated babel.config.js, created metro.config.js and global.css, and added preset to tailwind.config.js.
+
+2025-12-07: Addressed performance and asset display issues.
+- **Bus Stop Asset Image:** The default Leaflet marker was replaced with a custom bus stop icon (SVG, base64 encoded) to resolve the "placeholder" issue.
+- **Map and App Performance:** Implemented dynamic loading of bus stops based on the visible map bounds. A new API endpoint `/api/stops_in_bounds` was created on the server to fetch stops within a specified bounding box using direct SQLite queries for efficiency. The client-side `App.js` was modified to track map viewport changes, debounce these changes, and then call the new bounded API endpoint, significantly reducing the number of stops rendered at any given time.
+
+2025-12-07: Switched to Victoria BC Transit GTFS data.
+- Updated `server/config.json` to point to the Victoria BC Transit GTFS zip URL.
+- Updated `client/components/Map.js` to center the map on Victoria, BC coordinates.
+- Re-ran the GTFS import script to populate the database with the new agency data.
+- Restarted the server and verified that stops in the Victoria area are being served correctly.
+
+2025-12-07: Updated StopCard UI.
+- Implemented dynamic direction selector hiding. The StopCard now checks the unique directions in the arrival data. If only one direction exists, the selector buttons are hidden. If multiple exist, buttons are generated dynamically for each available direction. This improves the user experience by removing unnecessary controls.
+
+2025-12-07: Implemented Day-Based Arrival Filtering.
+- Updated the server-side `/api/stop_times/:stop_id` endpoint to properly filter scheduled arrivals based on the `calendar.txt` and `calendar_dates.txt` GTFS files.
+- The server now determines the current date and day of the week (using 'America/Vancouver' timezone) and filters trips to ensure only those active for the current day are returned to the client. This fixes the issue where all scheduled trips for all days were being displayed.
+- **Server Persistence:** Switched to using `pm2` to manage the server process to ensure it stays running reliably.
+
+2025-12-07: Added Route Number to Arrivals with Dynamic Coloring.
+- Updated server endpoint to fetch `route_short_name`, `route_color`, and `route_text_color`.
+- Updated `StopCard` component to display the route number in a box styled with the official GTFS route colors (background and text).
+- Restarted the server via `pm2` to apply changes.
+
+2025-12-07: Implemented Auto-Scrolling to Next Arrival.
+- Replaced `ScrollView` with `FlatList` in `client/components/StopCard.js` for better list control.
+- Added logic to calculate the current time in Victoria, BC.
+- Implemented functionality to automatically scroll the arrivals list to the first bus scheduled after the current time when the stop card opens. This ensures the user immediately sees the most relevant information without scrolling.
+
+2025-12-07: Added Manual Date/Time Selection.
+- Modified `App.js` to manage a `selectedDate` state and pass it down to `StopCard`, triggering re-fetches when the date changes.
+- Implemented date navigation (Previous Day, Next Day, Today) buttons and a time input field within `StopCard.js`.
+- Added a "Reset to Now" button to revert to current date/time schedule viewing.
+- The scroll-to-next-arrival logic now respects the manually selected time if provided, otherwise using the current time.
+- Restarted the server via `pm2` to apply `App.js` changes.
+
+2025-12-08: Configured Mobile Access & Addressed Technical Debt.
+- **Mobile Access:** Configured the client to use a dynamic API URL. Added `TUNNEL_URL` configuration in `App.js` to support Expo Tunneling via `ngrok` for WSL2 environments, solving Mixed Content and network accessibility issues. Added `ngrok-skip-browser-warning` header to bypass ngrok's splash page.
+- **User Location:** Implemented `LocationMarker` component in `Map.js` to request user permission, display current location as a blue circle, and center the map on the user. Added retry logic for better reliability.
+- **UI Tweaks:** Updated bus stop icons to a custom green square SVG. Tuned the size to be smaller (15px) based on feedback.
+- **SafeAreaView:** Installed `react-native-safe-area-context` and replaced the root `View` in `App.js` with `SafeAreaView` wrapped in `SafeAreaProvider` to future-proof against deprecation warnings.
+- **Compact Date/Time Selector:** Refactored the `StopCard` component to collapse the date/time controls into a single summary line by default. Users can tap to expand and edit the schedule. This saves significant screen real estate.
+
+2025-12-08: Improved Direction Naming & Scrolling Reliability.
+- **Direction Naming:** Updated `StopCard.js` to replace generic "Direction 0/1" labels with "Outbound/Inbound". Created a helper function `getDirectionLabel` to handle this mapping cleanly.
+- **Scrolling Reliability:** Improved the auto-scrolling logic in `StopCard.js` to ensure the list scrolls to the current time *after* data is fully loaded and layout is complete. Added an `onLayout` handler to the `FlatList` to trigger scrolling when the list geometry changes (e.g., after a data refresh), fixing the issue where the list would sometimes stay at the top.
+
+2025-12-08: Reverted Draggable Stop Card.
+- **Revert:** At user request, removed the draggable/sliding menu functionality and restored the original fixed-height StopCard. This resolves the map visibility issues and scrolling conflicts. The specific improvements to the card (loading spinner, compact date picker, naming) were retained.
+
+2025-12-08: Major Performance Optimization & UI Refinement.
+- **StopCard UI:** Replaced the "Close" button with a "Hide/Show" toggle. Minimized state shows only the stop name, maximizing map visibility.
+  - Implemented logic to automatically expand the card when a new stop is selected.
+  - Removed excessive whitespace in both collapsed and expanded states.
+  - Ensured content remains mounted when hidden to preserve scroll position and input state.
+- **Map UX:**
+  - Removed tooltips (popups) from map markers for a cleaner interface.
+  - Implemented auto-centering: The map now smooth-pans (`flyTo`) to the selected stop, offset by 250px to ensure it remains visible above the expanded menu.
+- **Performance - Server:**
+  - **Critical Fix:** Rewrote `/api/stop_times/:stop_id` to use a single optimized SQL query instead of inefficient JS filtering. This resolved incomplete data issues and massive performance bottlenecks.
+  - **Optimization:** Added `LIMIT 500` and reduced column selection in `/api/stops_in_bounds` to prevent lag when the map is zoomed out.
+- **Performance - Client:**
+  - **Fix:** Resolved "Maximum update depth exceeded" error by fixing a dependency loop in `Map.js`'s `useEffect`.
+  - **Rendering:** Switched from DOM-based `Marker` to Canvas-based `CircleMarker` in `Map.js`.
+  - **Memoization:** Wrapped marker generation in `useMemo` to prevent unnecessary re-renders.
+  - **Scroll Perf:** Implemented `getItemLayout` and fixed item height (60px) in `StopCard` to ensure instant, jank-free auto-scrolling to the current time.
+
+2025-12-08: Implemented Real-Time Features (Trip Updates & Vehicle Positions).
+- **Real-Time Trip Updates:**
+  - Integrated `gtfs-realtime-bindings` to fetch trip updates from the official feed (`tripupdates.pb`).
+  - Enhanced `/api/stop_times/:stop_id` to merge real-time predictions with static schedule data.
+  - Handled both absolute timestamps and `delay` values to calculate accurate ETAs in the 'America/Vancouver' timezone.
+  - **UI:** Updated `StopCard` to display real-time arrival times in **bold blue**. The original scheduled time is shown with a strikethrough if delayed/early, or hidden if the bus is exactly on time.
+- **Real-Time Vehicle Positions:**
+  - Created a new endpoint `/api/vehicles_for_stop/:stop_id` to fetch live bus locations (`vehicleupdates.pb`) for routes serving the selected stop.
+  - **UI:** Updated `Map.js` to render live buses as square markers. Each marker displays the route number and uses the official route colors for easy identification.
+  - Implemented polling: The app now auto-refreshes both arrival times and vehicle positions every 30 seconds, ensuring the user always has the latest data without manual interaction.
+
+2025-12-08: Added "Last Updated" Indicator.
+- **UI Enhancement:** Added a "time since last update" indicator (e.g., "Updated Just now", "Updated 2 min ago") next to the "Arrivals" header in the `StopCard`. This provides immediate feedback to the user about the freshness of the data.
+- **Logic:** Implemented a client-side timer that updates the text every 10 seconds, resetting whenever new data is fetched from the server.
+
+2025-12-08: Refined StopCard UI & Fixed Auto-Update.
+- **UI Tweaks:** Restored the "Prev Day" button in the schedule selector and reduced the vertical height of the collapsed date picker to improve screen real estate.
+- **Bug Fix:** Fixed the auto-update mechanism for arrivals. The app was previously caching API responses, causing the data to remain stale despite polling. Added a timestamp (`ts`) query parameter to `fetchArrivals` and `fetchVehicles` requests to force fresh data fetches from the server.
+
+2025-12-08: Implemented StopCard Animation.
+- **Animation:** Integrated `react-native-reanimated` to add a smooth height animation when expanding or collapsing the `StopCard`. The card now fluidly transitions between collapsed (80px) and expanded (400px) states.
+- **Interop:** Configured `cssInterop` to ensure NativeWind classes work correctly with the animated component.
+
+2025-12-08: Fixed "Unexpected Text Node" Error and StopCard Animation.
+- **Bug Fix:** Resolved "Unexpected text node" error in `StopCard.js` by cleaning up whitespace and JSX formatting within the `FlatList` `renderItem` function.
+- **Bug Fix:** Corrected the `StopCard` animation by changing the root `View` to `Animated.View` and ensuring a matching closing tag. The `COLLAPSED_HEIGHT` was adjusted to 60px to fully hide the calendar selector when collapsed.
+
+2025-12-08: Hardened Real-time Vehicle Data Handling.
+- **Bug Fix:** Fixed "vehicles.map is not a function" error that occurred when the `/api/vehicles_for_stop` endpoint returned non-array data (e.g., a 500 error HTML page).
+  - Modified `client/App.js` to:
+    - Explicitly check if the `fetch` response is `ok` before parsing JSON.
+    - Verify that the received `data` for vehicles is an array before setting state.
+    - Set `vehicles` to an empty array (`[]`) on any fetch error or invalid data type to prevent client-side crashes.
+
+2025-12-08: Added Performance Optimizations & Map Pan for Live Buses.
+- **Database Indexing:** Added a spatial index on `stop_lat` and `stop_lon` to the `stops` table for faster queries in `/api/stops_in_bounds`.
+- **Compression:** Enabled GZIP compression for server API responses to reduce data transfer size.
+- **Real-Time Data Caching:** Implemented a 15-second in-memory cache for real-time GTFS API calls to improve response times and reduce external API load.
+- **Arrivals Sorting:** Modified `/api/stop_times/:stop_id` to sort arrivals by `real_time_arrival` (if available), falling back to `arrival_time`.
+- **Map Pan to Live Bus:**
+  - **Server:** Added `trip_id` to vehicle objects returned by `/api/vehicles_for_stop/:stop_id`.
+  - **Client (`App.js`):** Added `selectedVehicle` state, `handleArrivalPress` (to find and set selected vehicle), and passed these to `Map` and `StopCard`.
+  - **Client (`Map.js`):** Added `selectedVehicle` prop and `useEffect` to `flyToLocation` the selected vehicle.
+  - **Client (`StopCard.js`):** Updated `renderItem` to make arrivals with corresponding live vehicles clickable, displaying a "LIVE" badge and triggering map pan via `onArrivalPress`.
+- **Scroll to Current Time Fix:** Refined the scroll-to-index logic in `StopCard.js` to use minute-based comparisons, ensuring arrivals at the exact current minute are scrolled to, prioritizing real-time data.

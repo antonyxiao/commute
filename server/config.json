@@ -1,0 +1,9 @@
+{
+  "sqlitePath": "./gtfs.db",
+  "agencies": [
+    {
+      "agency_key": "victoria",
+      "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48"
+    }
+  ]
+}

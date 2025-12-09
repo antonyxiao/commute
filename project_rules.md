@@ -1,0 +1,1 @@
+Always check feature_list.json first. Update progress.log after every step. Keep UI modern and minimal.

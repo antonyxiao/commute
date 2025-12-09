@@ -1,0 +1,133 @@
+{
+  "features": [
+    {
+      "name": "Setup Express server",
+      "status": "completed"
+    },
+    {
+      "name": "Setup SQLite database",
+      "status": "completed"
+    },
+    {
+      "name": "Import GTFS Data",
+      "status": "completed"
+    },
+    {
+      "name": "Create API endpoint for stops",
+      "status": "completed"
+    },
+    {
+      "name": "Create API endpoint for arrival times",
+      "status": "completed"
+    },
+    {
+      "name": "Initialize React Native Expo project",
+      "status": "completed"
+    },
+    {
+      "name": "Setup NativeWind",
+      "status": "completed"
+    },
+    {
+      "name": "Create Map View with react-leaflet",
+      "status": "completed"
+    },
+    {
+      "name": "Create Stop Card component",
+      "status": "completed"
+    },
+    {
+      "name": "Implement Swipe Card for direction switching",
+      "status": "completed"
+    },
+    {
+      "name": "Fetch and display stops on the map",
+      "status": "completed"
+    },
+    {
+      "name": "Fetch and display arrival times on stop card",
+      "status": "completed"
+    },
+    {
+      "name": "Improve map and app performance",
+      "status": "completed"
+    },
+    {
+      "name": "Fix bus stop asset image display",
+      "status": "completed"
+    },
+    {
+      "name": "Switch to Victoria BC Transit GTFS data",
+      "status": "completed"
+    },
+    {
+      "name": "Hide direction selector if only one direction exists for a stop",
+      "status": "completed"
+    },
+    {
+      "name": "Filter arrivals by current day/calendar",
+      "description": "Filter scheduled arrivals based on calendar.txt and calendar_dates.txt to match the current day of the week.",
+      "status": "completed"
+    },
+    {
+      "name": "Display bus route number in Arrivals",
+      "description": "Add the bus number (route short name) inside a square box next to the route name in the Arrivals list.",
+      "status": "completed"
+    },
+    {
+      "name": "Use GTFS route colors",
+      "description": "Style the route number box with the specific `route_color` and `route_text_color` from the GTFS data.",
+      "status": "completed"
+    },
+    {
+      "name": "Scroll to next arrival",
+      "description": "Automatically scroll the arrivals list to the next upcoming arrival based on the current Victoria, BC time.",
+      "status": "completed"
+    },
+    {
+      "name": "Manual Date/Time Selection",
+      "description": "Allow users to manually set the day of the week and time of day to view schedules, with a 'Current Time' reset option.",
+      "status": "completed"
+    },
+    {
+      "name": "Incorporate realtime bus position, trip updates, and alerts",
+      "description": "Show buses moving on map with bus number on logo, oriented in correct direction.",
+      "status": "pending"
+    },
+    {
+      "name": "Replace deprecated SafeAreaView",
+      "description": "Replace 'SafeAreaView' from 'react-native' with 'SafeAreaView' from 'react-native-safe-area-context'.",
+      "status": "completed"
+    },
+    {
+      "name": "Configure Network for Mobile Access",
+      "description": "Update API URL configuration to support LAN IP access for mobile devices and advise against using Tunnel mode due to Mixed Content restrictions.",
+      "status": "completed"
+    },
+    {
+      "name": "Compact Date/Time Selector",
+      "description": "Make the date/time selector smaller or use a popup menu to save space.",
+      "status": "completed"
+    },
+    {
+      "name": "Green Square Stop Icons",
+      "description": "Make stop icons bigger and change them to a green square style.",
+      "status": "completed"
+    },
+    {
+      "name": "User Location Integration",
+      "description": "Request user location, show it as a blue circle, and center the map on the user.",
+      "status": "completed"
+    },
+    {
+      "name": "Improve Direction Naming & Scrolling",
+      "description": "Rename Direction 0/1 to Inbound/Outbound. Fix arrival loading and auto-scrolling issues when switching directions.",
+      "status": "completed"
+    },
+    {
+      "name": "Draggable/Collapsible Stop Card",
+      "description": "Allow the user to drag the stop card down to a 'collapsed' state showing only the stop name, and drag up to expand.",
+      "status": "cancelled"
+    }
+  ]
+}
