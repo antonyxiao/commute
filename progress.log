@@ -115,3 +115,13 @@
   - **Client (`Map.js`):** Added `selectedVehicle` prop and `useEffect` to `flyToLocation` the selected vehicle.
   - **Client (`StopCard.js`):** Updated `renderItem` to make arrivals with corresponding live vehicles clickable, displaying a "LIVE" badge and triggering map pan via `onArrivalPress`.
 - **Scroll to Current Time Fix:** Refined the scroll-to-index logic in `StopCard.js` to use minute-based comparisons, ensuring arrivals at the exact current minute are scrolled to, prioritizing real-time data.
+
+2025-12-09: Codebase Refactoring for Scalability.
+- **Server:** Modularized monolithic `index.js` into a structured architecture with `controllers`, `routes`, `services`, and `utils`.
+- **Client:** Reorganized React Native code into `components`, `services`, `hooks`, and `constants` directories.
+- **Documentation:** Created comprehensive `README.md` detailing project structure and setup instructions.
+- **Maintainability:** Extracted API calls to `client/src/services/api.js` and state logic to `client/src/hooks/useTransitData.js` for cleaner components.
+
+2025-12-09: Fixed Client-Side Styling and Formatting.
+- **Tailwind Config:** Updated `client/tailwind.config.js` to include the new `src/**/*.{js,jsx,ts,tsx}` path. This fixes the issue where components lost all styling after the folder restructure.
+- **Code Formatting:** Cleaned up the indentation and code structure in `client/src/components/StopCard.js` to improve readability and maintainability.

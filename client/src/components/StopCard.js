@@ -257,89 +257,93 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
         </View>
         
         {loading ? (
-            <View className="flex-1 items-center justify-center">
+          <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color="#3B82F6" />
             <Text className="text-gray-500 mt-2">Loading schedule...</Text>
-            </View>
+          </View>
         ) : (
-                                    <FlatList
-                                      ref={flatListRef}
-                                      data={filteredArrivals}
-                                      keyExtractor={(item, index) => index.toString()}
-                                      contentContainerStyle={{ paddingBottom: 0 }}
-                                      getItemLayout={(data, index) => (
-                                        { length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index }
-                                      )}
-          renderItem={({ item: arrival }) => {
-            const scheduledTime = arrival.arrival_time.substring(0, 5);
-            // Check if this arrival has a corresponding vehicle
-            const hasVehicle = vehicles && vehicles.some(v => v.trip_id === arrival.trip_id);
-            
-            const Content = (
-              <View className="flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100">
-                <View>
-                  {arrival.real_time_arrival ? (
-                    <View>
-                      <Text className="text-lg font-bold text-blue-600 leading-tight">
-                        {arrival.real_time_arrival}
-                      </Text>
-                      {arrival.real_time_arrival !== scheduledTime && (
-                        <Text className="text-xs text-gray-400 leading-tight line-through">
-                          {scheduledTime}
+          <FlatList
+            ref={flatListRef}
+            data={filteredArrivals}
+            keyExtractor={(item, index) => index.toString()}
+            contentContainerStyle={{ paddingBottom: 0 }}
+            getItemLayout={(data, index) => ({
+              length: ITEM_HEIGHT,
+              offset: ITEM_HEIGHT * index,
+              index,
+            })}
+            renderItem={({ item: arrival }) => {
+              const scheduledTime = arrival.arrival_time.substring(0, 5);
+              // Check if this arrival has a corresponding vehicle
+              const hasVehicle = vehicles && vehicles.some((v) => v.trip_id === arrival.trip_id);
+
+              const Content = (
+                <View className="flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100">
+                  <View>
+                    {arrival.real_time_arrival ? (
+                      <View>
+                        <Text className="text-lg font-bold text-blue-600 leading-tight">
+                          {arrival.real_time_arrival}
                         </Text>
-                      )}
-                    </View>
-                  ) : (
-                    <Text className="text-lg font-bold text-gray-800">
-                      {scheduledTime}
-                    </Text>
-                  )}
-                </View>
-                <View className="flex-1 ml-4 flex-row items-center">
-                  {arrival.route_short_name && (
-                    <View 
-                      className="rounded px-2 py-1 mr-2"
-                      style={{ backgroundColor: arrival.route_color ? `#${arrival.route_color}` : '#2563EB' }}
-                    >
-                      <Text 
-                        className="font-bold text-sm"
-                        style={{ color: arrival.route_text_color ? `#${arrival.route_text_color}` : '#FFFFFF' }}
+                        {arrival.real_time_arrival !== scheduledTime && (
+                          <Text className="text-xs text-gray-400 leading-tight line-through">
+                            {scheduledTime}
+                          </Text>
+                        )}
+                      </View>
+                    ) : (
+                      <Text className="text-lg font-bold text-gray-800">{scheduledTime}</Text>
+                    )}
+                  </View>
+                  <View className="flex-1 ml-4 flex-row items-center">
+                    {arrival.route_short_name && (
+                      <View
+                        className="rounded px-2 py-1 mr-2"
+                        style={{
+                          backgroundColor: arrival.route_color ? `#${arrival.route_color}` : '#2563EB',
+                        }}
                       >
-                        {arrival.route_short_name}
-                      </Text>
-                    </View>
-                  )}
-                  <View className="flex-1">
+                        <Text
+                          className="font-bold text-sm"
+                          style={{
+                            color: arrival.route_text_color ? `#${arrival.route_text_color}` : '#FFFFFF',
+                          }}
+                        >
+                          {arrival.route_short_name}
+                        </Text>
+                      </View>
+                    )}
+                    <View className="flex-1">
                       <Text className="text-base text-gray-700" numberOfLines={1}>
-                        {arrival.trip_headsign || arrival.stop_headsign || "Unknown Destination"}
+                        {arrival.trip_headsign || arrival.stop_headsign || 'Unknown Destination'}
                       </Text>
                       {hasVehicle && (
-                          <View className="bg-green-500 rounded px-1 self-start mt-1">
-                              <Text className="text-white text-[10px] font-bold px-1">LIVE</Text>
-                          </View>
+                        <View className="bg-green-500 rounded px-1 self-start mt-1">
+                          <Text className="text-white text-[10px] font-bold px-1">LIVE</Text>
+                        </View>
                       )}
+                    </View>
                   </View>
                 </View>
-              </View>
-            );
+              );
 
-            if (hasVehicle && onArrivalPress) {
-                return (
-                    <TouchableOpacity onPress={() => onArrivalPress(arrival)}>
-                        {Content}
-                    </TouchableOpacity>
-                );
-            }
-            return Content;
-          }}
-            ListEmptyComponent={<Text className="text-gray-500 italic mt-4 text-center">No upcoming arrivals for this direction.</Text>}
-            onScrollToIndexFailed={(info) => {
-                const wait = new Promise(resolve => setTimeout(resolve, 500));
-                wait.then(() => {
-                    flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 });
-                });
+              if (hasVehicle && onArrivalPress) {
+                return <TouchableOpacity onPress={() => onArrivalPress(arrival)}>{Content}</TouchableOpacity>;
+              }
+              return Content;
             }}
-            />
+            ListEmptyComponent={
+              <Text className="text-gray-500 italic mt-4 text-center">
+                No upcoming arrivals for this direction.
+              </Text>
+            }
+            onScrollToIndexFailed={(info) => {
+              const wait = new Promise((resolve) => setTimeout(resolve, 500));
+              wait.then(() => {
+                flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 });
+              });
+            }}
+          />
         )}
       </View>
     </Animated.View>
