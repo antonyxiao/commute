@@ -1,5 +1,5 @@
 {
-  "sqlitePath": "./gtfs.db",
+  "sqlitePath": "../gtfs.db",
   "agencies": [
     {
       "agency_key": "victoria",

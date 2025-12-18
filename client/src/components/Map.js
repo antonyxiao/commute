@@ -48,6 +48,23 @@ if (Platform.OS === 'web') {
   });
 }
 
+const getOccupancyStatus = (status) => {
+  const statuses = [
+    'Empty', 'Many Seats Available', 'Few Seats Available', 'Standing Room Only', 
+    'Crushed Standing Room Only', 'Full', 'Not Accepting Passengers'
+  ];
+  return statuses[status] || 'Unknown';
+};
+
+const getCongestionLevel = (level) => {
+  const levels = [
+    'Unknown', 'Running Smoothly', 'Stop and Go', 'Congestion', 'Severe Congestion'
+  ];
+  return levels[level] || 'Unknown';
+};
+
+
+
 const EXPANDED_STOP_CARD_HEIGHT = 400;
 const COLLAPSED_STOP_CARD_HEIGHT = 60;
 
@@ -65,14 +82,8 @@ function LocationMarker({ isMapCardActive, isMapCardCollapsed, flyToLocation }) 
       if (e.code === 1) {
           console.warn("Location permission denied.");
       } else {
-          console.log("Location check failed (unavailable or timeout). Silent retry.");
+          console.log("Location check failed (unavailable or timeout).");
       }
-      
-      // Retry once with lower accuracy requirements if high accuracy fails
-      // Note: We use a flag or check to prevent infinite loops if retry also fails, 
-      // but for now we just fire one single retry.
-      // We strictly avoid re-triggering 'locate' endlessly.
-      map.locate({ maxZoom: 16, enableHighAccuracy: false });
     }
   });
 
@@ -239,7 +250,18 @@ export default function Map({ stops, selectedStop, vehicles, selectedVehicle, on
                 position={[v.lat, v.lon]} 
                 icon={icon}
                 zIndexOffset={1000} 
-              />
+              >
+                <Popup>
+                  <div className="min-w-[150px]">
+                    <h3 className="font-bold text-lg mb-1">{v.route_short_name} Bus</h3>
+                    <div className="text-sm space-y-1">
+                      <p><span className="font-semibold">Speed:</span> {v.speed ? (v.speed * 3.6).toFixed(1) + ' km/h' : 'N/A'}</p>
+                      <p><span className="font-semibold">Occupancy:</span> {getOccupancyStatus(v.occupancy_status)}</p>
+                      <p><span className="font-semibold">Congestion:</span> {getCongestionLevel(v.congestion_level)}</p>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
           );
       });
   }, [vehicles]);

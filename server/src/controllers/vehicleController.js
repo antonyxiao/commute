@@ -63,6 +63,11 @@ async function getVehiclesForStop(req, res) {
                         lat: entity.vehicle.position.latitude,
                         lon: entity.vehicle.position.longitude,
                         bearing: entity.vehicle.position.bearing,
+                        speed: entity.vehicle.position.speed,
+                        occupancy_status: entity.vehicle.occupancyStatus,
+                        congestion_level: entity.vehicle.congestionLevel,
+                        current_status: entity.vehicle.currentStatus,
+                        stop_id: entity.vehicle.stopId,
                         route_short_name: routeInfo.route_short_name,
                         route_color: routeInfo.route_color || '000000',
                         route_text_color: routeInfo.route_text_color || 'FFFFFF'

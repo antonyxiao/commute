@@ -1,5 +1,6 @@
 .gemini/
 gha-creds-*.json
 server/gtfs.db
+gtfs.db
 node_modules/
 *.log

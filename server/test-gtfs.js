@@ -6,9 +6,9 @@ async function test() {
     await gtfs.openDb(config);
     console.log('DB Opened.');
     
-    // Pick a stop ID from previous output: '78'
-    console.log('Fetching stoptimes for stop 78...');
-    const times = await gtfs.getStoptimes({ stop_id: '78' });
+    // Pick a stop ID from previous output: '100071'
+    console.log('Fetching stoptimes for stop 100071...');
+    const times = await gtfs.getStoptimes({ stop_id: '100071' });
     console.log('Times found:', times.length);
     if (times.length > 0) console.log(times[0]);
     
