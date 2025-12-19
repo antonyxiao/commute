@@ -4,6 +4,7 @@
   "agencies": [
     {
       "agency_key": "victoria",
+      "gtfs_agency_ids": ["", "0"],
       "name": "Victoria - BC Transit",
       "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48",
       "realtimeUrls": {
@@ -13,6 +14,7 @@
     },
     {
       "agency_key": "vancouver",
+      "gtfs_agency_ids": ["TL"],
       "name": "Vancouver - Translink",
       "url": "https://gtfs-static.translink.ca/gtfs/google_transit.zip?_gl=1*xpkakn*_gcl_au*MTU0ODMwMTgwMy4xNzY2MTc5NDYz*_ga*ODc1NjI5MDAuMTc2NjE3OTQ2Mw..*_ga_2559ZWBT54*czE3NjYxNzk0NjIkbzEkZzEkdDE3NjYxNzk3ODUkajkkbDAkaDA.",
       "realtimeUrls": {

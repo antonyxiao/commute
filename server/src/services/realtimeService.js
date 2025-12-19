@@ -1,10 +1,7 @@
 const axios = require('axios');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
-const rtCache = {
-  tripUpdates: { data: null, timestamp: 0 },
-  vehiclePositions: { data: null, timestamp: 0 }
-};
+const rtCache = {};
 const CACHE_TTL = 15000; // 15 seconds
 
 /**
@@ -15,6 +12,9 @@ const CACHE_TTL = 15000; // 15 seconds
  */
 async function fetchWithCache(url, cacheKey) {
   const now = Date.now();
+  if (!rtCache[cacheKey]) {
+    rtCache[cacheKey] = { data: null, timestamp: 0 };
+  }
   if (rtCache[cacheKey].data && (now - rtCache[cacheKey].timestamp < CACHE_TTL)) {
     return rtCache[cacheKey].data;
   }

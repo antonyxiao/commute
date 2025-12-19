@@ -273,23 +273,44 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
               index,
             })}
             renderItem={({ item: arrival }) => {
-              const scheduledTime = arrival.arrival_time.substring(0, 5);
+              const scheduledTime = arrival.arrival_time ? arrival.arrival_time.substring(0, 5) : '--:--';
               // Check if this arrival has a corresponding vehicle
               const hasVehicle = vehicles && vehicles.some((v) => v.trip_id === arrival.trip_id);
 
+              const isCanceled = arrival.status === 'CANCELED';
+              const isAdded = arrival.status === 'ADDED';
+              const isUnscheduled = arrival.status === 'UNSCHEDULED';
+              const isSkipped = arrival.status === 'SKIPPED';
+
               const Content = (
-                <View className="flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100">
-                  <View>
-                    {arrival.real_time_arrival ? (
+                <View className={`flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100 ${isCanceled || isSkipped ? 'opacity-60 bg-gray-50' : ''}`}>
+                  <View className="w-16">
+                    {isCanceled ? (
+                       <View>
+                           <Text className="text-lg font-bold text-red-500 leading-tight line-through">
+                               {scheduledTime}
+                           </Text>
+                           <Text className="text-[10px] text-red-600 font-bold">CANCELED</Text>
+                       </View>
+                    ) : isSkipped ? (
+                        <View>
+                           <Text className="text-lg font-bold text-gray-500 leading-tight line-through">
+                               {scheduledTime}
+                           </Text>
+                           <Text className="text-[10px] text-gray-600 font-bold">SKIPPED</Text>
+                       </View>
+                    ) : arrival.real_time_arrival ? (
                       <View>
-                        <Text className="text-lg font-bold text-blue-600 leading-tight">
+                        <Text className={`text-lg font-bold leading-tight ${isAdded ? 'text-green-600' : 'text-blue-600'}`}>
                           {arrival.real_time_arrival}
                         </Text>
-                        {arrival.real_time_arrival !== scheduledTime && (
+                        {arrival.real_time_arrival !== scheduledTime && !isAdded && (
                           <Text className="text-xs text-gray-400 leading-tight line-through">
                             {scheduledTime}
                           </Text>
                         )}
+                        {isAdded && <Text className="text-[10px] text-green-600 font-bold">ADDED</Text>}
+                        {isUnscheduled && <Text className="text-[10px] text-orange-600 font-bold">UNSCHED</Text>}
                       </View>
                     ) : (
                       <Text className="text-lg font-bold text-gray-800">{scheduledTime}</Text>
@@ -301,6 +322,7 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
                         className="rounded px-2 py-1 mr-2"
                         style={{
                           backgroundColor: arrival.route_color ? `#${arrival.route_color}` : '#2563EB',
+                          opacity: isCanceled || isSkipped ? 0.5 : 1
                         }}
                       >
                         <Text
@@ -314,10 +336,10 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
                       </View>
                     )}
                     <View className="flex-1">
-                      <Text className="text-base text-gray-700" numberOfLines={1}>
+                      <Text className={`text-base ${isCanceled || isSkipped ? 'text-gray-400 line-through' : 'text-gray-700'}`} numberOfLines={1}>
                         {arrival.trip_headsign || arrival.stop_headsign || 'Unknown Destination'}
                       </Text>
-                      {hasVehicle && (
+                      {hasVehicle && !isCanceled && !isSkipped && (
                         <View className="bg-green-500 rounded px-1 self-start mt-1">
                           <Text className="text-white text-[10px] font-bold px-1">LIVE</Text>
                         </View>
@@ -327,7 +349,7 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
                 </View>
               );
 
-              if (hasVehicle && onArrivalPress) {
+              if (hasVehicle && onArrivalPress && !isCanceled && !isSkipped) {
                 return <TouchableOpacity onPress={() => onArrivalPress(arrival)}>{Content}</TouchableOpacity>;
               }
               return Content;

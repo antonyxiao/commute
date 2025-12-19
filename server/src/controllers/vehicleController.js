@@ -25,7 +25,8 @@ async function getVehiclesForStop(req, res) {
                 t.trip_id,
                 r.route_short_name,
                 r.route_color,
-                r.route_text_color
+                r.route_text_color,
+                r.agency_id
             FROM stop_times st
             JOIN trips t ON st.trip_id = t.trip_id
             JOIN routes r ON t.route_id = r.route_id
@@ -46,44 +47,61 @@ async function getVehiclesForStop(req, res) {
     const validTrips = await queryAll(query, [dateString, stop_id, dateString, dateString]);
 
     const tripMap = new Map();
-    validTrips.forEach(t => tripMap.set(t.trip_id, t));
+    const foundAgencyIds = new Set();
+    
+    validTrips.forEach(t => {
+        tripMap.set(t.trip_id, t);
+        // Treat null/undefined as empty string for matching
+        foundAgencyIds.add(t.agency_id || "");
+    });
 
     let vehicles = [];
-    try {
-        // TODO: Dynamically determine agency based on stop_id
-        const agencyConfig = config.agencies.find(a => a.agency_key === 'victoria');
-        const vehiclePositionsUrl = agencyConfig ? agencyConfig.realtimeUrls.vehiclePositions : null;
 
-        if (vehiclePositionsUrl) {
-            const buffer = await fetchWithCache(vehiclePositionsUrl, 'vehiclePositions');
-            const feed = decodeFeed(buffer);
+    // Identify which agencies involved in these trips
+    const matchedAgencies = config.agencies.filter(agency => 
+        agency.gtfs_agency_ids && agency.gtfs_agency_ids.some(id => foundAgencyIds.has(id))
+    );
 
-            feed.entity.forEach(entity => {
-                if (entity.vehicle && entity.vehicle.trip && entity.vehicle.position) {
-                    const tripId = entity.vehicle.trip.tripId;
-                    if (tripMap.has(tripId)) {
-                        const routeInfo = tripMap.get(tripId);
-                        vehicles.push({
-                            id: entity.id,
-                            trip_id: tripId,
-                            lat: entity.vehicle.position.latitude,
-                            lon: entity.vehicle.position.longitude,
-                            bearing: entity.vehicle.position.bearing,
-                            speed: entity.vehicle.position.speed,
-                            occupancy_status: entity.vehicle.occupancyStatus,
-                            congestion_level: entity.vehicle.congestionLevel,
-                            current_status: entity.vehicle.currentStatus,
-                            stop_id: entity.vehicle.stopId,
-                            route_short_name: routeInfo.route_short_name,
-                            route_color: routeInfo.route_color || '000000',
-                            route_text_color: routeInfo.route_text_color || 'FFFFFF'
-                        });
+    for (const agencyConfig of matchedAgencies) {
+        try {
+            const vehiclePositionsUrl = agencyConfig.realtimeUrls ? agencyConfig.realtimeUrls.vehiclePositions : null;
+
+            if (vehiclePositionsUrl) {
+                const buffer = await fetchWithCache(vehiclePositionsUrl, `vehiclePositions_${agencyConfig.agency_key}`);
+                const feed = decodeFeed(buffer);
+
+                feed.entity.forEach(entity => {
+                    if (entity.vehicle && entity.vehicle.trip && entity.vehicle.position) {
+                        const tripId = entity.vehicle.trip.tripId;
+                        if (tripMap.has(tripId)) {
+                            const routeInfo = tripMap.get(tripId);
+                            // Ensure we only process trips belonging to this agency context (though tripMap handles filtering effectively)
+                            // Ideally, we check if the trip's agency matches the current agencyConfig, but tripMap is already scoped to the stop.
+                            // However, if two agencies use same tripIds (unlikely but possible), we might have issues. 
+                            // Assuming tripIds are unique or we don't care about collision here as we filtered validTrips for the stop.
+                            
+                            vehicles.push({
+                                id: entity.id,
+                                trip_id: tripId,
+                                lat: entity.vehicle.position.latitude,
+                                lon: entity.vehicle.position.longitude,
+                                bearing: entity.vehicle.position.bearing,
+                                speed: entity.vehicle.position.speed,
+                                occupancy_status: entity.vehicle.occupancyStatus,
+                                congestion_level: entity.vehicle.congestionLevel,
+                                current_status: entity.vehicle.currentStatus,
+                                stop_id: entity.vehicle.stopId,
+                                route_short_name: routeInfo.route_short_name,
+                                route_color: routeInfo.route_color || '000000',
+                                route_text_color: routeInfo.route_text_color || 'FFFFFF'
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }
+        } catch (rtErr) {
+            console.error(`Error fetching real-time vehicles for ${agencyConfig.agency_key}:`, rtErr.message);
         }
-    } catch (rtErr) {
-        console.error('Error fetching real-time vehicles:', rtErr.message);
     }
 
     res.json(vehicles);

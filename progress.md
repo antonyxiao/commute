@@ -52,6 +52,23 @@
 2.  **GTFS Time Formatting**:
     -   Fixed the display of "late-night" GTFS times (e.g., 25:05, 26:04).
     -   Added `formatGTFSTime` to `server/src/utils/dateUtils.js` to convert these to standard 24-hour clock strings (e.g., 1:05, 2:04) while maintaining the original values for sorting.
+3.  **Syntax Error in Trip Controller**:
+    -   Fixed a "Missing catch or finally after try" syntax error in `server/src/controllers/tripController.js`.
+    -   Removed an extra closing brace that was prematurely terminating a `try` block.
+
+### Features
+1.  **Multi-Agency Real-time Support**:
+    -   Updated `server/config.json` to map agencies to their GTFS `agency_id`s.
+    -   Refactored `tripController.js` and `vehicleController.js` to fetch and aggregate real-time data from multiple agencies dynamically based on the stop's agency context.
+    -   Updated `realtimeService.js` to support dynamic cache keys for different feeds.
+
+2.  **Enhanced Real-time Status UI**:
+    -   Updated `client/src/components/StopCard.js` to handle and visualize:
+        -   **Canceled** trips (strikethrough, red text).
+        -   **Skipped** stops (strikethrough, gray text).
+        -   **Added** trips (green text).
+        -   **Unscheduled** trips (orange text).
+    -   Improved `tripController.js` to parse `scheduleRelationship` from GTFS-RT (CANCELED, ADDED, UNSCHEDULED) and `StopPoint` (SKIPPED).
 
 ### UX Improvements
 1.  **Map Popup Styling**:
