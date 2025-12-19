@@ -1,4 +1,4 @@
-const config = require('./config.json');
+const config = require('./loadConfig');
 
 async function runImport() {
   try {

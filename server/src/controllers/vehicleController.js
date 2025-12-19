@@ -1,6 +1,7 @@
 const { queryAll } = require('../db');
 const { fetchWithCache, decodeFeed } = require('../services/realtimeService');
 const { toGTFSDate, parseGTFSDate, getDayName } = require('../utils/dateUtils');
+const config = require('../../loadConfig');
 
 /**
  * Get vehicles for a specific stop.
@@ -49,32 +50,38 @@ async function getVehiclesForStop(req, res) {
 
     let vehicles = [];
     try {
-        const buffer = await fetchWithCache('https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=48', 'vehiclePositions');
-        const feed = decodeFeed(buffer);
+        // TODO: Dynamically determine agency based on stop_id
+        const agencyConfig = config.agencies.find(a => a.agency_key === 'victoria');
+        const vehiclePositionsUrl = agencyConfig ? agencyConfig.realtimeUrls.vehiclePositions : null;
 
-        feed.entity.forEach(entity => {
-            if (entity.vehicle && entity.vehicle.trip && entity.vehicle.position) {
-                const tripId = entity.vehicle.trip.tripId;
-                if (tripMap.has(tripId)) {
-                    const routeInfo = tripMap.get(tripId);
-                    vehicles.push({
-                        id: entity.id,
-                        trip_id: tripId,
-                        lat: entity.vehicle.position.latitude,
-                        lon: entity.vehicle.position.longitude,
-                        bearing: entity.vehicle.position.bearing,
-                        speed: entity.vehicle.position.speed,
-                        occupancy_status: entity.vehicle.occupancyStatus,
-                        congestion_level: entity.vehicle.congestionLevel,
-                        current_status: entity.vehicle.currentStatus,
-                        stop_id: entity.vehicle.stopId,
-                        route_short_name: routeInfo.route_short_name,
-                        route_color: routeInfo.route_color || '000000',
-                        route_text_color: routeInfo.route_text_color || 'FFFFFF'
-                    });
+        if (vehiclePositionsUrl) {
+            const buffer = await fetchWithCache(vehiclePositionsUrl, 'vehiclePositions');
+            const feed = decodeFeed(buffer);
+
+            feed.entity.forEach(entity => {
+                if (entity.vehicle && entity.vehicle.trip && entity.vehicle.position) {
+                    const tripId = entity.vehicle.trip.tripId;
+                    if (tripMap.has(tripId)) {
+                        const routeInfo = tripMap.get(tripId);
+                        vehicles.push({
+                            id: entity.id,
+                            trip_id: tripId,
+                            lat: entity.vehicle.position.latitude,
+                            lon: entity.vehicle.position.longitude,
+                            bearing: entity.vehicle.position.bearing,
+                            speed: entity.vehicle.position.speed,
+                            occupancy_status: entity.vehicle.occupancyStatus,
+                            congestion_level: entity.vehicle.congestionLevel,
+                            current_status: entity.vehicle.currentStatus,
+                            stop_id: entity.vehicle.stopId,
+                            route_short_name: routeInfo.route_short_name,
+                            route_color: routeInfo.route_color || '000000',
+                            route_text_color: routeInfo.route_text_color || 'FFFFFF'
+                        });
+                    }
                 }
-            }
-        });
+            });
+        }
     } catch (rtErr) {
         console.error('Error fetching real-time vehicles:', rtErr.message);
     }

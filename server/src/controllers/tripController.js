@@ -1,6 +1,7 @@
 const { queryAll } = require('../db');
 const { fetchWithCache, decodeFeed } = require('../services/realtimeService');
 const { toGTFSDate, parseGTFSDate, getDayName, timeToMinutes, formatGTFSTime } = require('../utils/dateUtils');
+const config = require('../../loadConfig');
 
 /**
  * Get stop times for a specific stop, optionally merging with real-time data.
@@ -63,88 +64,94 @@ async function getStopTimes(req, res) {
 
   if (dateString === todayString) {
       try {
-          const buffer = await fetchWithCache('https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=48', 'tripUpdates');
-          const feed = decodeFeed(buffer);
-          
-          const rtMap = new Map();
-          feed.entity.forEach(entity => {
-              if (entity.tripUpdate && entity.tripUpdate.trip && entity.tripUpdate.stopTimeUpdate) {
-                  const tripId = entity.tripUpdate.trip.tripId;
-                  const stopUpdate = entity.tripUpdate.stopTimeUpdate.find(u => u.stopId == stop_id);
-                  if (stopUpdate) {
-                      rtMap.set(tripId, stopUpdate);
-                  }
-              }
-          });
+          // TODO: Dynamically determine agency based on stop_id
+          const agencyConfig = config.agencies.find(a => a.agency_key === 'victoria');
+          const tripUpdatesUrl = agencyConfig ? agencyConfig.realtimeUrls.tripUpdates : null;
 
-          // Enrich rows with RT data
-          rows = rows.map(row => {
-             let sortTime = timeToMinutes(row.arrival_time);
-             let rtTime = null;
+          if (tripUpdatesUrl) {
+            const buffer = await fetchWithCache(tripUpdatesUrl, 'tripUpdates');
+            const feed = decodeFeed(buffer);
+            
+            const rtMap = new Map();
+            feed.entity.forEach(entity => {
+                if (entity.tripUpdate && entity.tripUpdate.trip && entity.tripUpdate.stopTimeUpdate) {
+                    const tripId = entity.tripUpdate.trip.tripId;
+                    const stopUpdate = entity.tripUpdate.stopTimeUpdate.find(u => u.stopId == stop_id);
+                    if (stopUpdate) {
+                        rtMap.set(tripId, stopUpdate);
+                    }
+                }
+            });
 
-             if (rtMap.has(row.trip_id)) {
-                 const update = rtMap.get(row.trip_id);
-                 
-                 if (update.arrival) {
-                     if (update.arrival.time) {
-                         // Timestamp is in seconds
-                         const timestamp = update.arrival.time.low || update.arrival.time; 
-                         const date = new Date(timestamp * 1000);
-                         
-                         const timeOptions = { 
-                             timeZone: 'America/Vancouver', 
-                             hour: '2-digit', 
-                             minute: '2-digit', 
-                             hour12: false 
-                         };
-                         rtTime = new Intl.DateTimeFormat('en-CA', timeOptions).format(date);
-                     } else if (update.arrival.delay) {
-                         const delaySeconds = update.arrival.delay;
-                         const [hh, mm, ss] = row.arrival_time.split(':').map(Number);
-                         
-                         const arrivalDate = new Date();
-                         arrivalDate.setHours(hh);
-                         arrivalDate.setMinutes(mm);
-                         arrivalDate.setSeconds(ss || 0);
-                         
-                         // Add delay
-                         arrivalDate.setSeconds(arrivalDate.getSeconds() + delaySeconds);
-                         
-                         const timeOptions = { 
-                             timeZone: 'America/Vancouver', 
-                             hour: '2-digit', 
-                             minute: '2-digit', 
-                             hour12: false 
-                         };
-                         rtTime = new Intl.DateTimeFormat('en-CA', timeOptions).format(arrivalDate);
-                     }
-                 }
-                 
-                 if (rtTime) {
-                     let rtMinutes = timeToMinutes(rtTime);
-                     const scheduledMinutes = timeToMinutes(row.arrival_time);
-                     
-                     // Handle midnight crossover
-                     // If difference is > 12 hours, assume day rollover
-                     if (Math.abs(rtMinutes - scheduledMinutes) > 720) {
-                         if (rtMinutes < scheduledMinutes) {
-                             rtMinutes += 1440; // RT is next day
-                         } else {
-                             rtMinutes -= 1440; // RT is prev day (unlikely but possible)
-                         }
-                     }
-                     sortTime = rtMinutes;
-                 }
-             }
+            // Enrich rows with RT data
+            rows = rows.map(row => {
+               let sortTime = timeToMinutes(row.arrival_time);
+               let rtTime = null;
 
-             return { 
-                 ...row, 
-                 arrival_time: formatGTFSTime(row.arrival_time),
-                 departure_time: formatGTFSTime(row.departure_time),
-                 real_time_arrival: rtTime ? formatGTFSTime(rtTime) : null, 
-                 sortTime 
-             };
-          });
+               if (rtMap.has(row.trip_id)) {
+                   const update = rtMap.get(row.trip_id);
+                   
+                   if (update.arrival) {
+                       if (update.arrival.time) {
+                           // Timestamp is in seconds
+                           const timestamp = update.arrival.time.low || update.arrival.time; 
+                           const date = new Date(timestamp * 1000);
+                           
+                           const timeOptions = { 
+                               timeZone: 'America/Vancouver', 
+                               hour: '2-digit', 
+                               minute: '2-digit', 
+                               hour12: false 
+                           };
+                           rtTime = new Intl.DateTimeFormat('en-CA', timeOptions).format(date);
+                       } else if (update.arrival.delay) {
+                           const delaySeconds = update.arrival.delay;
+                           const [hh, mm, ss] = row.arrival_time.split(':').map(Number);
+                           
+                           const arrivalDate = new Date();
+                           arrivalDate.setHours(hh);
+                           arrivalDate.setMinutes(mm);
+                           arrivalDate.setSeconds(ss || 0);
+                           
+                           // Add delay
+                           arrivalDate.setSeconds(arrivalDate.getSeconds() + delaySeconds);
+                           
+                           const timeOptions = { 
+                               timeZone: 'America/Vancouver', 
+                               hour: '2-digit', 
+                               minute: '2-digit', 
+                               hour12: false 
+                           };
+                           rtTime = new Intl.DateTimeFormat('en-CA', timeOptions).format(arrivalDate);
+                       }
+                   }
+                   
+                   if (rtTime) {
+                       let rtMinutes = timeToMinutes(rtTime);
+                       const scheduledMinutes = timeToMinutes(row.arrival_time);
+                       
+                       // Handle midnight crossover
+                       // If difference is > 12 hours, assume day rollover
+                       if (Math.abs(rtMinutes - scheduledMinutes) > 720) {
+                           if (rtMinutes < scheduledMinutes) {
+                               rtMinutes += 1440; // RT is next day
+                           } else {
+                               rtMinutes -= 1440; // RT is prev day (unlikely but possible)
+                           }
+                       }
+                       sortTime = rtMinutes;
+                   }
+               }
+
+               return { 
+                   ...row, 
+                   arrival_time: formatGTFSTime(row.arrival_time),
+                   departure_time: formatGTFSTime(row.departure_time),
+                   real_time_arrival: rtTime ? formatGTFSTime(rtTime) : null, 
+                   sortTime 
+               };
+            });
+          }
 
           rows.sort((a, b) => a.sortTime - b.sortTime);
 

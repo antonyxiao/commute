@@ -5,12 +5,20 @@
     {
       "agency_key": "victoria",
       "name": "Victoria - BC Transit",
-      "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48"
+      "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48",
+      "realtimeUrls": {
+        "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=48",
+        "vehiclePositions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=48"
+      }
     },
     {
       "agency_key": "vancouver",
       "name": "Vancouver - Translink",
-      "url": "https://gtfs-static.translink.ca/gtfs/google_transit.zip?_gl=1*xpkakn*_gcl_au*MTU0ODMwMTgwMy4xNzY2MTc5NDYz*_ga*ODc1NjI5MDAuMTc2NjE3OTQ2Mw..*_ga_2559ZWBT54*czE3NjYxNzk0NjIkbzEkZzEkdDE3NjYxNzk3ODUkajkkbDAkaDA."
+      "url": "https://gtfs-static.translink.ca/gtfs/google_transit.zip?_gl=1*xpkakn*_gcl_au*MTU0ODMwMTgwMy4xNzY2MTc5NDYz*_ga*ODc1NjI5MDAuMTc2NjE3OTQ2Mw..*_ga_2559ZWBT54*czE3NjYxNzk0NjIkbzEkZzEkdDE3NjYxNzk3ODUkajkkbDAkaDA.",
+      "realtimeUrls": {
+        "tripUpdates": "https://gtfsapi.translink.ca/v3/gtfsrealtime?apikey={{TRANSLINK_API_KEY}}",
+        "vehiclePositions": "https://gtfsapi.translink.ca/v3/gtfsposition?apikey={{TRANSLINK_API_KEY}}"
+      }
     }
   ]
 }
