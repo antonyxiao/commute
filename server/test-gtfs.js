@@ -1,8 +1,8 @@
-const gtfs = require('gtfs');
 const config = require('./config.json');
 
 async function test() {
   try {
+    const gtfs = await import('gtfs');
     await gtfs.openDb(config);
     console.log('DB Opened.');
     

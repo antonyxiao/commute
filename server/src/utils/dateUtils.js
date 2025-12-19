@@ -45,9 +45,23 @@ function timeToMinutes(timeString) {
     return hours * 60 + minutes;
 }
 
+/**
+ * Formats a GTFS time string (potentially > 24 hours) into a standard 24h string.
+ * @param {string} timeString - The GTFS time string.
+ * @returns {string} Standard time string (H:MM or HH:MM).
+ */
+function formatGTFSTime(timeString) {
+    if (!timeString) return null;
+    const [h, m] = timeString.split(':').map(Number);
+    const hours = h % 24;
+    const minutes = m.toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+}
+
 module.exports = {
     toGTFSDate,
     parseGTFSDate,
     getDayName,
-    timeToMinutes
+    timeToMinutes,
+    formatGTFSTime
 };

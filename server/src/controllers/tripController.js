@@ -1,6 +1,6 @@
 const { queryAll } = require('../db');
 const { fetchWithCache, decodeFeed } = require('../services/realtimeService');
-const { toGTFSDate, parseGTFSDate, getDayName, timeToMinutes } = require('../utils/dateUtils');
+const { toGTFSDate, parseGTFSDate, getDayName, timeToMinutes, formatGTFSTime } = require('../utils/dateUtils');
 
 /**
  * Get stop times for a specific stop, optionally merging with real-time data.
@@ -79,9 +79,11 @@ async function getStopTimes(req, res) {
 
           // Enrich rows with RT data
           rows = rows.map(row => {
+             let sortTime = timeToMinutes(row.arrival_time);
+             let rtTime = null;
+
              if (rtMap.has(row.trip_id)) {
                  const update = rtMap.get(row.trip_id);
-                 let rtTime = null;
                  
                  if (update.arrival) {
                      if (update.arrival.time) {
@@ -118,25 +120,44 @@ async function getStopTimes(req, res) {
                      }
                  }
                  
-                 return { ...row, real_time_arrival: rtTime };
+                 if (rtTime) {
+                     let rtMinutes = timeToMinutes(rtTime);
+                     const scheduledMinutes = timeToMinutes(row.arrival_time);
+                     
+                     // Handle midnight crossover
+                     // If difference is > 12 hours, assume day rollover
+                     if (Math.abs(rtMinutes - scheduledMinutes) > 720) {
+                         if (rtMinutes < scheduledMinutes) {
+                             rtMinutes += 1440; // RT is next day
+                         } else {
+                             rtMinutes -= 1440; // RT is prev day (unlikely but possible)
+                         }
+                     }
+                     sortTime = rtMinutes;
+                 }
              }
-             return row; 
+
+             return { 
+                 ...row, 
+                 arrival_time: formatGTFSTime(row.arrival_time),
+                 departure_time: formatGTFSTime(row.departure_time),
+                 real_time_arrival: rtTime ? formatGTFSTime(rtTime) : null, 
+                 sortTime 
+             };
           });
 
-          rows.sort((a, b) => {
-            const timeA = a.real_time_arrival ? timeToMinutes(a.real_time_arrival) : timeToMinutes(a.arrival_time);
-            const timeB = b.real_time_arrival ? timeToMinutes(b.real_time_arrival) : timeToMinutes(b.arrival_time);
-
-            if (timeA === -1 && timeB !== -1) return 1;
-            if (timeA !== -1 && timeB === -1) return -1;
-            if (timeA === -1 && timeB === -1) return 0;
-
-            return timeA - timeB;
-          });
+          rows.sort((a, b) => a.sortTime - b.sortTime);
 
       } catch (rtErr) {
           console.error('Error fetching/parsing real-time updates:', rtErr);
       }
+  } else {
+      // For non-today dates, still format the static times
+      rows = rows.map(row => ({
+          ...row,
+          arrival_time: formatGTFSTime(row.arrival_time),
+          departure_time: formatGTFSTime(row.departure_time)
+      }));
   }
   
   res.json(rows);

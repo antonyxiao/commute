@@ -1,13 +1,13 @@
-const gtfs = require('gtfs');
 const config = require('./config.json');
 
-async function importGtfs() {
+async function runImport() {
   try {
-    await gtfs.import(config);
+    const gtfs = await import('gtfs');
+    await gtfs.importGtfs(config);
     console.log('GTFS data imported successfully.');
   } catch (err) {
     console.error('Error importing GTFS data:', err);
   }
 }
 
-importGtfs();
+runImport();

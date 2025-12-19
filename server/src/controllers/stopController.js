@@ -1,4 +1,3 @@
-const gtfs = require('gtfs');
 const { queryAll } = require('../db');
 
 /**
@@ -6,7 +5,8 @@ const { queryAll } = require('../db');
  */
 async function getStops(req, res) {
   try {
-    const stops = await gtfs.getStops();
+    const query = 'SELECT * FROM stops';
+    const stops = await queryAll(query);
     res.json(stops);
   } catch (err) {
     console.error('Error fetching stops:', err);

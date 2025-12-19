@@ -1,5 +1,6 @@
 {
   "sqlitePath": "../gtfs.db",
+  "downloadTimeout": 300000,
   "agencies": [
     {
       "agency_key": "victoria",

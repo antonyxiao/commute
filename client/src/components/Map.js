@@ -252,12 +252,12 @@ export default function Map({ stops, selectedStop, vehicles, selectedVehicle, on
                 zIndexOffset={1000} 
               >
                 <Popup>
-                  <div className="min-w-[150px]">
-                    <h3 className="font-bold text-lg mb-1">{v.route_short_name} Bus</h3>
-                    <div className="text-sm space-y-1">
-                      <p><span className="font-semibold">Speed:</span> {v.speed ? (v.speed * 3.6).toFixed(1) + ' km/h' : 'N/A'}</p>
-                      <p><span className="font-semibold">Occupancy:</span> {getOccupancyStatus(v.occupancy_status)}</p>
-                      <p><span className="font-semibold">Congestion:</span> {getCongestionLevel(v.congestion_level)}</p>
+                  <div className="min-w-[120px] leading-none">
+                    <h3 className="font-bold text-base !mb-1 !m-0">{v.route_short_name} Bus</h3>
+                    <div className="text-xs flex flex-col">
+                      <div className="!m-0 !leading-tight"><span className="font-semibold">Speed:</span> {v.speed ? (v.speed * 3.6).toFixed(1) + ' km/h' : 'N/A'}</div>
+                      <div className="!m-0 !leading-tight"><span className="font-semibold">Occupancy:</span> {getOccupancyStatus(v.occupancy_status)}</div>
+                      <div className="!m-0 !leading-tight"><span className="font-semibold">Congestion:</span> {getCongestionLevel(v.congestion_level)}</div>
                     </div>
                   </div>
                 </Popup>
