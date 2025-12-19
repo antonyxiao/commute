@@ -1,6 +1,6 @@
 # Transit App
 
-A full-stack transit application providing real-time bus schedules and vehicle locations for Victoria, BC.
+A full-stack transit application providing real-time bus schedules and vehicle locations for Transit agencies using GTFS.
 
 ## Project Structure
 
