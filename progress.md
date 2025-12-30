@@ -81,3 +81,12 @@
     -   Refactored `server/src/controllers/stopController.js` to use direct SQL queries (`SELECT * FROM stops`) via the app's DB module instead of the `gtfs` library helper.
     -   Removed the redundant `gtfs.openDb()` call in `server/index.js`, streamlining the database connection logic to use `server/src/db/index.js`.
     -   Updated `server/test-gtfs.js` to use dynamic imports for compatibility.
+
+## Date: 2025-12-29
+
+### Performance & Real-time Tuning
+1.  **Faster Polling Intervals**:
+    -   Updated `server/src/services/realtimeService.js` to reduce the cache TTL from 15s to **5s** to support more frequent updates.
+    -   Refactored `client/src/hooks/useTransitData.js` to implement independent polling intervals:
+        -   **Vehicle Positions**: Every 5 seconds.
+        -   **Trip Updates (Arrivals)**: Every 10 seconds.
