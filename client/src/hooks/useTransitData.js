@@ -52,54 +52,60 @@ export function useStopDetails(selectedStop, selectedDate) {
     const [vehicles, setVehicles] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    // Initial fetch when stop or date changes
     useEffect(() => {
-        let intervalId;
-
         if (selectedStop) {
-            setVehicles([]); // Clear previous vehicles
-            
-            const fetchData = async (isBackgroundRefresh = false) => {
-                if (!isBackgroundRefresh) {
-                    setLoading(true);
-                    setArrivals([]);
-                }
+            setLoading(true);
+            setArrivals([]);
+            setVehicles([]);
 
-                try {
-                    const [arrivalsData, vehiclesData] = await Promise.all([
-                        fetchStopTimes(selectedStop.stop_id, selectedDate),
-                        fetchVehiclesForStop(selectedStop.stop_id, selectedDate)
-                    ]);
-                    
-                    setArrivals(arrivalsData);
-                    if (Array.isArray(vehiclesData)) {
-                        setVehicles(vehiclesData);
-                    } else {
-                        setVehicles([]);
-                    }
-
-                } catch (err) {
-                    console.error("Error fetching stop details:", err);
-                } finally {
-                    if (!isBackgroundRefresh) setLoading(false);
-                }
-            };
-
-            fetchData(false);
-
-            // Poll every 30 seconds if looking at "Now"
-            if (!selectedDate) {
-                intervalId = setInterval(() => {
-                    fetchData(true);
-                }, 30000);
-            }
+            Promise.all([
+                fetchStopTimes(selectedStop.stop_id, selectedDate),
+                fetchVehiclesForStop(selectedStop.stop_id, selectedDate)
+            ]).then(([arrivalsData, vehiclesData]) => {
+                setArrivals(arrivalsData);
+                setVehicles(Array.isArray(vehiclesData) ? vehiclesData : []);
+            }).catch(err => {
+                console.error("Error fetching stop details:", err);
+            }).finally(() => {
+                setLoading(false);
+            });
         } else {
             setArrivals([]);
             setVehicles([]);
         }
+    }, [selectedStop, selectedDate]);
 
-        return () => {
-            if (intervalId) clearInterval(intervalId);
-        };
+    // Polling for Arrivals (10 seconds)
+    useEffect(() => {
+        let intervalId;
+        if (selectedStop && !selectedDate) {
+            intervalId = setInterval(async () => {
+                try {
+                    const data = await fetchStopTimes(selectedStop.stop_id, null);
+                    setArrivals(data);
+                } catch (err) {
+                    console.error("Error polling arrivals:", err);
+                }
+            }, 10000);
+        }
+        return () => clearInterval(intervalId);
+    }, [selectedStop, selectedDate]);
+
+    // Polling for Vehicles (5 seconds)
+    useEffect(() => {
+        let intervalId;
+        if (selectedStop && !selectedDate) {
+            intervalId = setInterval(async () => {
+                try {
+                    const data = await fetchVehiclesForStop(selectedStop.stop_id, null);
+                    setVehicles(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Error polling vehicles:", err);
+                }
+            }, 5000);
+        }
+        return () => clearInterval(intervalId);
     }, [selectedStop, selectedDate]);
 
     return { arrivals, vehicles, loading };

@@ -2,7 +2,7 @@ const axios = require('axios');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
 const rtCache = {};
-const CACHE_TTL = 15000; // 15 seconds
+const CACHE_TTL = 5000; // 5 seconds
 
 /**
  * Fetches data from a URL with caching.
