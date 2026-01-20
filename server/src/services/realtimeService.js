@@ -2,25 +2,45 @@ const axios = require('axios');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
 const rtCache = {};
+const pendingRequests = {}; // Deduplication for concurrent requests
 const CACHE_TTL = 5000; // 5 seconds
 
 /**
- * Fetches data from a URL with caching.
+ * Fetches data from a URL with caching and request deduplication.
+ * Prevents multiple concurrent requests to the same URL.
  * @param {string} url - The URL to fetch from.
  * @param {string} cacheKey - The key to store data in the cache.
  * @returns {Promise<ArrayBuffer>} The response data.
  */
 async function fetchWithCache(url, cacheKey) {
   const now = Date.now();
-  if (!rtCache[cacheKey]) {
-    rtCache[cacheKey] = { data: null, timestamp: 0 };
+
+  // Check cache first
+  const cached = rtCache[cacheKey];
+  if (cached && cached.data && (now - cached.timestamp < CACHE_TTL)) {
+    return cached.data;
   }
-  if (rtCache[cacheKey].data && (now - rtCache[cacheKey].timestamp < CACHE_TTL)) {
-    return rtCache[cacheKey].data;
+
+  // If there's already a pending request for this key, wait for it
+  if (pendingRequests[cacheKey]) {
+    return pendingRequests[cacheKey];
   }
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  rtCache[cacheKey] = { data: response.data, timestamp: now };
-  return response.data;
+
+  // Create new request with deduplication
+  pendingRequests[cacheKey] = (async () => {
+    try {
+      const response = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 10000 // 10 second timeout
+      });
+      rtCache[cacheKey] = { data: response.data, timestamp: Date.now() };
+      return response.data;
+    } finally {
+      delete pendingRequests[cacheKey];
+    }
+  })();
+
+  return pendingRequests[cacheKey];
 }
 
 /**

@@ -1,11 +1,25 @@
+// Cached formatters for performance (avoid recreating on every call)
+const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Vancouver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+});
+
+const timeFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Vancouver',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+});
+
 /**
  * Formats a Date object to YYYYMMDD string.
  * @param {Date} date - The date to format.
  * @returns {string} The formatted date string.
  */
 function toGTFSDate(date) {
-    const dateOptions = { timeZone: 'America/Vancouver', year: 'numeric', month: '2-digit', day: '2-digit' };
-    const parts = new Intl.DateTimeFormat('en-CA', dateOptions).formatToParts(date);
+    const parts = dateFormatter.formatToParts(date);
     const y = parts.find(p => p.type === 'year').value;
     const m = parts.find(p => p.type === 'month').value;
     const d = parts.find(p => p.type === 'day').value;
@@ -58,10 +72,20 @@ function formatGTFSTime(timeString) {
     return `${hours}:${minutes}`;
 }
 
+/**
+ * Formats a Unix timestamp to HH:MM string using cached formatter.
+ * @param {number} timestamp - Unix timestamp in seconds.
+ * @returns {string} Formatted time string.
+ */
+function formatTimestamp(timestamp) {
+    return timeFormatter.format(new Date(timestamp * 1000));
+}
+
 module.exports = {
     toGTFSDate,
     parseGTFSDate,
     getDayName,
     timeToMinutes,
-    formatGTFSTime
+    formatGTFSTime,
+    formatTimestamp
 };

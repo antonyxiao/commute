@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, memo, useMemo } from 'react';
 import { View, Text, Platform, TouchableOpacity } from 'react-native';
 
-let MapContainer, TileLayer, Marker, CircleMarker, Popup, useMapEvents, busStopIcon, selectedBusStopIcon, userLocationIcon;
+let MapContainer, TileLayer, Marker, CircleMarker, Popup, useMapEvents, userLocationIcon, L, StopMarker;
 if (Platform.OS === 'web') {
   const RL = require('react-leaflet');
   MapContainer = RL.MapContainer;
@@ -10,32 +10,14 @@ if (Platform.OS === 'web') {
   CircleMarker = RL.CircleMarker;
   Popup = RL.Popup;
   useMapEvents = RL.useMapEvents;
-  
+
   // Fix for Leaflet icon issues in Webpack/Expo
-  const L = require('leaflet');
+  L = require('leaflet');
   delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
     iconUrl: require('leaflet/dist/images/marker-icon.png'),
     shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-  });
-
-  // Green Square Icon for Bus Stops
-  const busStopIconSvgBase64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAzMCAzMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB4PSIyIiB5PSIyIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI0IiBmaWxsPSIjMTBCOTgxIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==';
-  busStopIcon = new L.Icon({
-    iconUrl: busStopIconSvgBase64,
-    iconSize: [15, 15], 
-    iconAnchor: [7.5, 7.5], 
-    popupAnchor: [0, -7.5]
-  });
-
-  // Red Square Icon for Selected Bus Stop
-  const selectedStopIconSvgBase64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAzMCAzMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB4PSIyIiB5PSIyIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI0IiBmaWxsPSIjRUY0NDQ0IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==';
-  selectedBusStopIcon = new L.Icon({
-    iconUrl: selectedStopIconSvgBase64,
-    iconSize: [15, 15],
-    iconAnchor: [7.5, 7.5],
-    popupAnchor: [0, -7.5]
   });
 
   // Blue Circle Icon for User Location
@@ -46,7 +28,43 @@ if (Platform.OS === 'web') {
     iconAnchor: [6, 6],
     popupAnchor: [0, -6]
   });
+
+  // Memoized stop marker component (web only)
+  StopMarker = memo(function StopMarker({ stop, isSelected, onSelect }) {
+    const handleClick = useCallback(() => {
+      onSelect.current?.(stop);
+    }, [stop, onSelect]);
+
+    return (
+      <React.Fragment>
+        <CircleMarker
+          center={[stop.stop_lat, stop.stop_lon]}
+          radius={isSelected ? 8 : 6}
+          pathOptions={{
+            fillColor: isSelected ? '#EF4444' : '#10B981',
+            color: 'white',
+            weight: 2,
+            fillOpacity: 1,
+            interactive: false
+          }}
+        />
+        <CircleMarker
+          center={[stop.stop_lat, stop.stop_lon]}
+          radius={20}
+          pathOptions={{
+            stroke: false,
+            fillOpacity: 0,
+            interactive: true
+          }}
+          eventHandlers={{ click: handleClick }}
+        />
+      </React.Fragment>
+    );
+  });
 }
+
+// Cache for vehicle icons to avoid recreating them (using object to avoid Map/component name collision)
+const vehicleIconCache = {};
 
 const getOccupancyStatus = (status) => {
   const statuses = [
@@ -190,66 +208,52 @@ export default function Map({ stops, selectedStop, vehicles, selectedVehicle, on
   // Victoria BC coordinates
   const position = [48.4284, -123.3656];
 
-  // Memoize markers to prevent unnecessary re-renders of the entire marker list
-  const markers = React.useMemo(() => {
-    if (!stops) return null;
-    return stops.map(stop => {
-      const isSelected = selectedStop && selectedStop.stop_id === stop.stop_id;
-      return (
-        <React.Fragment key={stop.stop_id}>
-            {/* Visual Marker (Non-interactive) */}
-            <CircleMarker 
-              center={[stop.stop_lat, stop.stop_lon]}
-              radius={isSelected ? 8 : 6}
-              pathOptions={{
-                fillColor: isSelected ? '#EF4444' : '#10B981',
-                color: 'white',
-                weight: 2,
-                fillOpacity: 1,
-                interactive: false
-              }}
-            />
-            {/* Invisible Hit Target (Interactive) */}
-            <CircleMarker 
-              center={[stop.stop_lat, stop.stop_lon]}
-              radius={20}
-              pathOptions={{
-                stroke: false,
-                fillOpacity: 0,
-                interactive: true
-              }}
-              eventHandlers={{
-                click: () => {
-                  if (onStopSelect) onStopSelect(stop);
-                },
-              }}
-            />
-        </React.Fragment>
-      );
-    });
-  }, [stops, selectedStop, onStopSelect]);
+  // Store onStopSelect in a ref to avoid recreating markers when callback changes
+  const onStopSelectRef = React.useRef(onStopSelect);
+  onStopSelectRef.current = onStopSelect;
 
-  // Memoize vehicle markers
-  const vehicleMarkers = React.useMemo(() => {
-      // Ensure vehicles is an array before mapping
+  // Memoize selected stop ID to avoid full marker rebuild on selection
+  const selectedStopId = selectedStop?.stop_id;
+
+  // Memoize markers - only rebuild when stops change, not when selection changes
+  const markers = useMemo(() => {
+    if (!stops) return null;
+    return stops.map(stop => (
+      <StopMarker
+        key={stop.stop_id}
+        stop={stop}
+        isSelected={stop.stop_id === selectedStopId}
+        onSelect={onStopSelectRef}
+      />
+    ));
+  }, [stops, selectedStopId]);
+
+  // Memoize vehicle markers with icon caching
+  const vehicleMarkers = useMemo(() => {
       const vehicleList = Array.isArray(vehicles) ? vehicles : [];
       if (vehicleList.length === 0) return null;
 
       return vehicleList.map(v => {
-          const L = require('leaflet');
-          const icon = new L.DivIcon({
-              className: '', // Remove default leaflet-div-icon styles
-              html: `<div style="background-color: #${v.route_color}; color: #${v.route_text_color}; width: 24px; height: 24px; display: flex; justify-content: center; align-items: center; border-radius: 4px; font-weight: bold; font-size: 12px; border: 1px solid white;">${v.route_short_name}</div>`,
-              iconSize: [24, 24],
-              iconAnchor: [12, 12]
-          });
+          // Create cache key based on route appearance
+          const iconKey = `${v.route_color}-${v.route_text_color}-${v.route_short_name}`;
+          let icon = vehicleIconCache[iconKey];
+
+          if (!icon) {
+              icon = new L.DivIcon({
+                  className: '',
+                  html: `<div style="background-color: #${v.route_color}; color: #${v.route_text_color}; width: 24px; height: 24px; display: flex; justify-content: center; align-items: center; border-radius: 4px; font-weight: bold; font-size: 12px; border: 1px solid white;">${v.route_short_name}</div>`,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
+              });
+              vehicleIconCache[iconKey] = icon;
+          }
 
           return (
-              <Marker 
-                key={v.id} 
-                position={[v.lat, v.lon]} 
+              <Marker
+                key={v.id}
+                position={[v.lat, v.lon]}
                 icon={icon}
-                zIndexOffset={1000} 
+                zIndexOffset={1000}
               >
                 <Popup>
                   <div className="min-w-[120px] leading-none">

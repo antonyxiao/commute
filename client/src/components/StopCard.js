@@ -1,32 +1,162 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
+import React, { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
+import { View, Text, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Dimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS, Easing } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { cssInterop } from 'nativewind';
 
 cssInterop(Animated.View, { className: 'style' });
 
-const EXPANDED_HEIGHT = 400;
+// Constants moved outside component to prevent recreation
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const COLLAPSED_HEIGHT = 60;
+const MEDIUM_HEIGHT = 400;
+const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.85;
 const ITEM_HEIGHT = 60;
+const SNAP_POINTS = [COLLAPSED_HEIGHT, MEDIUM_HEIGHT, EXPANDED_HEIGHT];
+
+// Animation config moved outside to prevent recreation
+const ANIMATION_CONFIG = {
+  duration: 250,
+  easing: Easing.out(Easing.cubic),
+};
+
+// Find nearest snap point - moved outside component
+const findNearestSnapPoint = (height, velocity) => {
+  'worklet';
+  if (Math.abs(velocity) > 500) {
+    if (velocity > 0) {
+      for (let i = SNAP_POINTS.length - 1; i >= 0; i--) {
+        if (SNAP_POINTS[i] < height) return SNAP_POINTS[i];
+      }
+      return SNAP_POINTS[0];
+    } else {
+      for (let i = 0; i < SNAP_POINTS.length; i++) {
+        if (SNAP_POINTS[i] > height) return SNAP_POINTS[i];
+      }
+      return SNAP_POINTS[SNAP_POINTS.length - 1];
+    }
+  }
+  let closest = SNAP_POINTS[0];
+  let minDist = Math.abs(height - SNAP_POINTS[0]);
+  for (let i = 1; i < SNAP_POINTS.length; i++) {
+    const dist = Math.abs(height - SNAP_POINTS[i]);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = SNAP_POINTS[i];
+    }
+  }
+  return closest;
+};
+
+// Memoized arrival item component
+const ArrivalItem = memo(function ArrivalItem({ arrival, vehicles, onArrivalPress }) {
+  const scheduledTime = arrival.arrival_time ? arrival.arrival_time.substring(0, 5) : '--:--';
+  const hasVehicle = vehicles?.some((v) => v.trip_id === arrival.trip_id);
+  const isCanceled = arrival.status === 'CANCELED';
+  const isAdded = arrival.status === 'ADDED';
+  const isUnscheduled = arrival.status === 'UNSCHEDULED';
+  const isSkipped = arrival.status === 'SKIPPED';
+
+  const Content = (
+    <View className={`flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100 ${isCanceled || isSkipped ? 'opacity-60 bg-gray-50' : ''}`}>
+      <View className="w-16">
+        {isCanceled ? (
+          <View>
+            <Text className="text-lg font-bold text-red-500 leading-tight line-through">{scheduledTime}</Text>
+            <Text className="text-[10px] text-red-600 font-bold">CANCELED</Text>
+          </View>
+        ) : isSkipped ? (
+          <View>
+            <Text className="text-lg font-bold text-gray-500 leading-tight line-through">{scheduledTime}</Text>
+            <Text className="text-[10px] text-gray-600 font-bold">SKIPPED</Text>
+          </View>
+        ) : arrival.real_time_arrival ? (
+          <View>
+            <Text className={`text-lg font-bold leading-tight ${isAdded ? 'text-green-600' : 'text-blue-600'}`}>
+              {arrival.real_time_arrival}
+            </Text>
+            {arrival.real_time_arrival !== scheduledTime && !isAdded && (
+              <Text className="text-xs text-gray-400 leading-tight line-through">{scheduledTime}</Text>
+            )}
+            {isAdded && <Text className="text-[10px] text-green-600 font-bold">ADDED</Text>}
+            {isUnscheduled && <Text className="text-[10px] text-orange-600 font-bold">UNSCHED</Text>}
+          </View>
+        ) : (
+          <Text className="text-lg font-bold text-gray-800">{scheduledTime}</Text>
+        )}
+      </View>
+      <View className="flex-1 ml-4 flex-row items-center">
+        {arrival.route_short_name && (
+          <View
+            className="rounded px-2 py-1 mr-2"
+            style={{
+              backgroundColor: arrival.route_color ? `#${arrival.route_color}` : '#2563EB',
+              opacity: isCanceled || isSkipped ? 0.5 : 1
+            }}
+          >
+            <Text
+              className="font-bold text-sm"
+              style={{ color: arrival.route_text_color ? `#${arrival.route_text_color}` : '#FFFFFF' }}
+            >
+              {arrival.route_short_name}
+            </Text>
+          </View>
+        )}
+        <View className="flex-1">
+          <Text className={`text-base ${isCanceled || isSkipped ? 'text-gray-400 line-through' : 'text-gray-700'}`} numberOfLines={1}>
+            {arrival.trip_headsign || arrival.stop_headsign || 'Unknown Destination'}
+          </Text>
+          {hasVehicle && !isCanceled && !isSkipped && (
+            <View className="bg-green-500 rounded px-1 self-start mt-1">
+              <Text className="text-white text-[10px] font-bold px-1">LIVE</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
+  if (hasVehicle && onArrivalPress && !isCanceled && !isSkipped) {
+    return <TouchableOpacity onPress={() => onArrivalPress(arrival)}>{Content}</TouchableOpacity>;
+  }
+  return Content;
+});
 
 export default function StopCard({ stop, arrivals, vehicles, loading, onClose, onArrivalPress, selectedDate, onDateChange, isCollapsed, setIsCollapsed }) {
-  // const [selectedDirection, setSelectedDirection] = useState(null); // Removed direction state
   const [manualTime, setManualTime] = useState(null);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [timeAgo, setTimeAgo] = useState('Just now');
   const flatListRef = useRef(null);
-  
-  const cardHeight = useSharedValue(isCollapsed ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      height: withTiming(isCollapsed ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT, {
-        duration: 300,
-        easing: Easing.inOut(Easing.quad),
-      }),
-    };
-  });
+  const cardHeight = useSharedValue(isCollapsed ? COLLAPSED_HEIGHT : MEDIUM_HEIGHT);
+  const startHeight = useSharedValue(isCollapsed ? COLLAPSED_HEIGHT : MEDIUM_HEIGHT);
+
+  // Sync cardHeight when isCollapsed changes externally
+  useEffect(() => {
+    const targetHeight = isCollapsed ? COLLAPSED_HEIGHT : MEDIUM_HEIGHT;
+    cardHeight.value = withTiming(targetHeight, ANIMATION_CONFIG);
+  }, [isCollapsed]);
+
+  const panGesture = useMemo(() => Gesture.Pan()
+    .onStart(() => {
+      startHeight.value = cardHeight.value;
+    })
+    .onUpdate((event) => {
+      const newHeight = startHeight.value - event.translationY;
+      cardHeight.value = Math.max(COLLAPSED_HEIGHT, Math.min(EXPANDED_HEIGHT, newHeight));
+    })
+    .onEnd((event) => {
+      const currentHeight = cardHeight.value;
+      const velocity = event.velocityY;
+      const targetHeight = findNearestSnapPoint(currentHeight, velocity);
+      cardHeight.value = withTiming(targetHeight, ANIMATION_CONFIG);
+      runOnJS(setIsCollapsed)(targetHeight === COLLAPSED_HEIGHT);
+    }), [setIsCollapsed]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    height: cardHeight.value,
+  }));
 
   // Reset manual time when resetting to "Current" (date becomes null)
   useEffect(() => {
@@ -131,27 +261,57 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
     }
   }, [filteredArrivals, manualTime, selectedDate]);
 
+  // Memoized FlatList helpers to prevent re-renders
+  const keyExtractor = useCallback((item, index) => item.trip_id || index.toString(), []);
+
+  const getItemLayout = useCallback((data, index) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+  }), []);
+
+  const renderArrivalItem = useCallback(({ item }) => (
+    <ArrivalItem arrival={item} vehicles={vehicles} onArrivalPress={onArrivalPress} />
+  ), [vehicles, onArrivalPress]);
+
+  const handleScrollToIndexFailed = useCallback((info) => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 });
+    }, 100);
+  }, []);
+
+  const ListEmptyComponent = useMemo(() => (
+    <Text className="text-gray-500 italic mt-4 text-center">
+      No upcoming arrivals for this direction.
+    </Text>
+  ), []);
+
+  const listContentStyle = useMemo(() => ({ paddingBottom: 0 }), []);
+
   if (!stop) return null;
 
   return (
-    <Animated.View 
+    <Animated.View
         style={[animatedStyle]}
-        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-lg border-t border-gray-200 px-4 pt-4 overflow-hidden"
+        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-lg border-t border-gray-200 overflow-hidden"
     >
-      <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-1">
-          <Text className="text-xl font-bold text-gray-800" numberOfLines={1}>{stop.stop_name}</Text>
-          { !isCollapsed && <Text className="text-sm text-gray-500">{stop.stop_desc}</Text> }
-        </View>
-        <TouchableOpacity 
-            onPress={() => setIsCollapsed(!isCollapsed)} 
-            className="p-2 bg-gray-100 rounded-full"
-        >
-          <Text className="text-gray-600 font-semibold">{isCollapsed ? "Show" : "Hide"}</Text>
-        </TouchableOpacity>
-      </View>
+      <GestureDetector gesture={panGesture}>
+        <Animated.View className="pt-2 pb-3 px-4">
+          {/* Drag Handle */}
+          <View className="items-center mb-2">
+            <View className="w-10 h-1 bg-gray-300 rounded-full" />
+          </View>
+          {/* Header */}
+          <View className="flex-row justify-between items-center">
+            <View className="flex-1">
+              <Text className="text-xl font-bold text-gray-800" numberOfLines={1}>{stop.stop_name}</Text>
+              { !isCollapsed && <Text className="text-sm text-gray-500">{stop.stop_desc}</Text> }
+            </View>
+          </View>
+        </Animated.View>
+      </GestureDetector>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} className="px-4">
         {/* Compact Date/Time Selector */}
         <View className="mb-4">
             {!isDatePickerOpen ? (
@@ -265,106 +425,17 @@ export default function StopCard({ stop, arrivals, vehicles, loading, onClose, o
           <FlatList
             ref={flatListRef}
             data={filteredArrivals}
-            keyExtractor={(item, index) => index.toString()}
-            contentContainerStyle={{ paddingBottom: 0 }}
-            getItemLayout={(data, index) => ({
-              length: ITEM_HEIGHT,
-              offset: ITEM_HEIGHT * index,
-              index,
-            })}
-            renderItem={({ item: arrival }) => {
-              const scheduledTime = arrival.arrival_time ? arrival.arrival_time.substring(0, 5) : '--:--';
-              // Check if this arrival has a corresponding vehicle
-              const hasVehicle = vehicles && vehicles.some((v) => v.trip_id === arrival.trip_id);
-
-              const isCanceled = arrival.status === 'CANCELED';
-              const isAdded = arrival.status === 'ADDED';
-              const isUnscheduled = arrival.status === 'UNSCHEDULED';
-              const isSkipped = arrival.status === 'SKIPPED';
-
-              const Content = (
-                <View className={`flex-row justify-between items-center h-[60px] px-2 border-b border-gray-100 ${isCanceled || isSkipped ? 'opacity-60 bg-gray-50' : ''}`}>
-                  <View className="w-16">
-                    {isCanceled ? (
-                       <View>
-                           <Text className="text-lg font-bold text-red-500 leading-tight line-through">
-                               {scheduledTime}
-                           </Text>
-                           <Text className="text-[10px] text-red-600 font-bold">CANCELED</Text>
-                       </View>
-                    ) : isSkipped ? (
-                        <View>
-                           <Text className="text-lg font-bold text-gray-500 leading-tight line-through">
-                               {scheduledTime}
-                           </Text>
-                           <Text className="text-[10px] text-gray-600 font-bold">SKIPPED</Text>
-                       </View>
-                    ) : arrival.real_time_arrival ? (
-                      <View>
-                        <Text className={`text-lg font-bold leading-tight ${isAdded ? 'text-green-600' : 'text-blue-600'}`}>
-                          {arrival.real_time_arrival}
-                        </Text>
-                        {arrival.real_time_arrival !== scheduledTime && !isAdded && (
-                          <Text className="text-xs text-gray-400 leading-tight line-through">
-                            {scheduledTime}
-                          </Text>
-                        )}
-                        {isAdded && <Text className="text-[10px] text-green-600 font-bold">ADDED</Text>}
-                        {isUnscheduled && <Text className="text-[10px] text-orange-600 font-bold">UNSCHED</Text>}
-                      </View>
-                    ) : (
-                      <Text className="text-lg font-bold text-gray-800">{scheduledTime}</Text>
-                    )}
-                  </View>
-                  <View className="flex-1 ml-4 flex-row items-center">
-                    {arrival.route_short_name && (
-                      <View
-                        className="rounded px-2 py-1 mr-2"
-                        style={{
-                          backgroundColor: arrival.route_color ? `#${arrival.route_color}` : '#2563EB',
-                          opacity: isCanceled || isSkipped ? 0.5 : 1
-                        }}
-                      >
-                        <Text
-                          className="font-bold text-sm"
-                          style={{
-                            color: arrival.route_text_color ? `#${arrival.route_text_color}` : '#FFFFFF',
-                          }}
-                        >
-                          {arrival.route_short_name}
-                        </Text>
-                      </View>
-                    )}
-                    <View className="flex-1">
-                      <Text className={`text-base ${isCanceled || isSkipped ? 'text-gray-400 line-through' : 'text-gray-700'}`} numberOfLines={1}>
-                        {arrival.trip_headsign || arrival.stop_headsign || 'Unknown Destination'}
-                      </Text>
-                      {hasVehicle && !isCanceled && !isSkipped && (
-                        <View className="bg-green-500 rounded px-1 self-start mt-1">
-                          <Text className="text-white text-[10px] font-bold px-1">LIVE</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              );
-
-              if (hasVehicle && onArrivalPress && !isCanceled && !isSkipped) {
-                return <TouchableOpacity onPress={() => onArrivalPress(arrival)}>{Content}</TouchableOpacity>;
-              }
-              return Content;
-            }}
-            ListEmptyComponent={
-              <Text className="text-gray-500 italic mt-4 text-center">
-                No upcoming arrivals for this direction.
-              </Text>
-            }
-            onScrollToIndexFailed={(info) => {
-              const wait = new Promise((resolve) => setTimeout(resolve, 500));
-              wait.then(() => {
-                flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 });
-              });
-            }}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={listContentStyle}
+            getItemLayout={getItemLayout}
+            renderItem={renderArrivalItem}
+            ListEmptyComponent={ListEmptyComponent}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            initialNumToRender={8}
+            extraData={vehicles}
           />
         )}
       </View>
