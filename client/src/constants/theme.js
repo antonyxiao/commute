@@ -56,9 +56,9 @@ export const palette = {
 };
 
 export const MAP_TILES = {
-  light: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-  dark: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-  attribution: '© OpenStreetMap contributors © CARTO',
+  light: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  dark: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '© OpenStreetMap contributors',
 };
 
 export function useTheme() {

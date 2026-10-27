@@ -47,7 +47,7 @@ Data flow:
 ## Where things live
 
 ### Client
-- `src/components/Map.native.js` — keyless Leaflet-in-WebView map, CARTO tiles, clustering.
+- `src/components/Map.native.js` — keyless Leaflet-in-WebView map, OSM tiles, clustering.
 - `src/components/map/leafletHtml.js` — HTML/JS document injected into the native WebView.
 - `src/components/Map.web.js` — `react-leaflet` map, themed tiles and controls.
 - `src/components/StopCard.js` — draggable bottom sheet, safe areas, direction filter.

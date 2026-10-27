@@ -2,8 +2,8 @@
  * Keyless raster map for native platforms. Runs Leaflet inside a WebView and
  * talks to React Native over `window.ReactNativeWebView.postMessage`.
  *
- * Tiles are CARTO Positron (light) / Dark Matter (dark), both built from
- * OpenStreetMap data, include street names, and require no API key.
+ * Tiles are OpenStreetMap standard raster tiles. Dark mode is produced by
+ * filtering the tile pane, so no API key or dark tile provider is required.
  */
 export function buildLeafletHtml({ dark = false, colors, center = [48.4284, -123.3656], zoom = 13 }) {
   const config = JSON.stringify({ dark, colors, center, zoom }).replace(/</g, '\\u003c');
@@ -14,8 +14,8 @@ export function buildLeafletHtml({ dark = false, colors, center = [48.4284, -123
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
-  <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
-  <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+  <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+  <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <style>
     :root {
@@ -31,6 +31,7 @@ export function buildLeafletHtml({ dark = false, colors, center = [48.4284, -123
     body { background: var(--bg); -webkit-tap-highlight-color: transparent; }
     .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); outline: none; }
     .leaflet-control-attribution { display: none !important; }
+    .map-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9); }
     .commute-cluster {
       display: flex; align-items: center; justify-content: center; box-sizing: border-box;
       border-radius: 999px; background: var(--accent); border: 2.5px solid var(--surface);
@@ -71,8 +72,8 @@ export function buildLeafletHtml({ dark = false, colors, center = [48.4284, -123
       return;
     }
     var TILES = {
-      light: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-      dark: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+      light: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      dark: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
     };
     var TILE_OPTIONS = {
       minZoom: 10,
@@ -369,6 +370,7 @@ export function buildLeafletHtml({ dark = false, colors, center = [48.4284, -123
       root.setProperty('--border', colors.border);
       root.setProperty('--bg', colors.background);
       document.body.style.backgroundColor = colors.background;
+      map.getContainer().classList.toggle('map-dark', nextDark);
 
       if (!tiles || tileTheme !== nextDark) {
         if (tiles) map.removeLayer(tiles);

@@ -52,6 +52,7 @@ function leafletThemeCss(colors, isDark) {
     .leaflet-tooltip-top:before { border-top-color: ${colors.surface}; }
     .commute-vehicle-icon { background: transparent; border: none; }
     .commute-vehicle-icon > div { box-shadow: 0 3px 10px ${shadow}; }
+    .commute-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9); }
   `;
 }
 
@@ -413,7 +414,9 @@ export default function Map({
       >
         <TileLayer
           key={isDark ? 'dark' : 'light'}
+          className={isDark ? 'commute-tiles-dark' : undefined}
           url={isDark ? MAP_TILES.dark : MAP_TILES.light}
+          attribution={MAP_TILES.attribution}
           maxZoom={19}
         />
         <LocationMarker

@@ -6,7 +6,7 @@ map on web, and an Express + SQLite backend.
 
 ## Highlights
 
-- **Keyless maps** everywhere: iOS/Android run Leaflet inside a WebView with CARTO/OSM
+- **Keyless maps** everywhere: iOS/Android run Leaflet inside a WebView with OpenStreetMap
   raster tiles (street names, no API key) and client-side stop clustering. Web uses
   Leaflet directly with the same controls.
 - **Adaptive design** that follows the system light/dark appearance, with a draggable,
@@ -100,8 +100,8 @@ query parameterization, and TTL cache eviction.
 ## Native map notes
 
 - The native map is a **keyless Leaflet map in a WebView** (`react-native-webview`).
-  Tiles come from CARTO's Positron (light) and Dark Matter (dark) basemaps, which are
-  built from OpenStreetMap data and include street names. No Google Maps key is needed.
+  Tiles come from OpenStreetMap's standard basemap and include street names. Dark mode
+  is produced by filtering the tile pane, so no API key or dark tile provider is needed.
 - `react-native-webview` and `expo-location` work in **Expo Go** out of the box.
 - Performance: tiles are not loaded during panning, retina duplicates are disabled,
   stops are clustered into screen-space cells, and the server only returns stops in
@@ -116,4 +116,4 @@ query parameterization, and TTL cache eviction.
 - **Phone can't reach the API** — make sure both devices are on the same network, the
   server is running, and port 3000 is not blocked. Set `EXPO_PUBLIC_API_URL` if the
   auto-detected host is wrong.
-- **Map is blank** — the Leaflet CDN or CARTO tile CDN is unreachable; check the network connection.
+- **Map is blank** — the Leaflet CDN or OpenStreetMap tile server is unreachable; check the network connection.

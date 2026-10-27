@@ -437,7 +437,7 @@ export default function Map({
             overflow: 'hidden',
           }}
         >
-          © OpenStreetMap contributors © CARTO
+          © OpenStreetMap contributors
         </Text>
       </View>
     </View>
