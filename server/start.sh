@@ -1,2 +1,4 @@
 #!/bin/bash
-node index.js > server.log 2>&1
+set -euo pipefail
+cd "$(dirname "$0")"
+exec node index.js

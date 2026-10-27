@@ -170,3 +170,66 @@
 -   Multi-agency RT fetching: **2-3× faster** (parallel vs sequential)
 -   Repeated requests: **Near-instant** (result caching)
 -   Overall latency reduction: **50-70%** for typical requests
+## Date: 2026-10-25
+
+### Mobile / design overhaul
+1.  **Native map support**: added `react-native-maps` (+ `expo-location`) and a new
+    `src/components/Map.native.js`. It uses CARTO/OSM `UrlTile` raster tiles, shows
+    live vehicle badges with callouts, supports "locate me" and "nearest stop", and
+    clusters stops with a dependency-free grid clusterer (`src/utils/cluster.js`).
+2.  **Adaptive theming**: `tailwind.config.js` now follows the system color scheme
+    (`darkMode: "media"`). Added `src/constants/theme.js` palettes, dark CARTO tiles,
+    themed Leaflet popups/controls, and dark splash/app config.
+3.  **Stop card redesign**: rebuilt `StopCard.js` with three responsive snap heights,
+    safe-area-aware layout, a compact next-arrival summary when collapsed, an
+    Inbound/Outbound/All filter, count badges, pull-to-refresh, skeleton loading,
+    error banners, and polished empty states. Arrival rows moved to `ArrivalRow.js`.
+4.  **Schedule picker**: new `DateTimeSheet.js` bottom-sheet modal with day stepper,
+    15-minute controls, quick presets, and a Reset action. Replaces the old HH/MM
+    TextInputs whose `defaultValue` never updated.
+5.  **Web map polish**: themed tiles and controls, custom zoom/locate buttons, CARTO
+    attribution, dark Leaflet popups, and a `100%`-height map container.
+
+### Reliability / data layer
+1.  **Hooks**: rewrote `useStops` and `useStopDetails` with `AbortController`, stale
+    response guards, foreground-only polling (`AppState`), retry/refetch, and separate
+    initial-load vs. refresh state. Polling no longer yanks the arrival list.
+2.  **API client**: request timeouts, abort propagation, typed `ApiError`, and manual
+    query-string building (avoids React Native's incomplete `URL` support).
+3.  **Host detection**: `src/constants/config.js` derives the API URL from
+    `Constants.expoConfig.hostUri` on devices and `window.location.hostname` on web;
+    `EXPO_PUBLIC_API_URL` overrides it.
+
+### Server
+1.  **Shared queries**: extracted `src/services/gtfsQueries.js` with one parameterized
+    trips-at-stop query and a bounded 5-minute cache used by both controllers.
+2.  **Correct service days**: weekday lookup now uses a UTC formatter on the YYYYMMDD
+    date, so results no longer depend on the server's timezone. Realtime delays are
+    computed in minutes instead of constructing local `Date`s.
+3.  **Bounded caches**: added `src/utils/ttlCache.js` (LRU + TTL) and replaced all
+    unbounded module-level maps in the controllers and realtime service.
+4.  **Validation & errors**: coordinates, dates, and stop IDs are validated; malformed
+    input returns 400. Added a JSON 404 and central error handler, `no-store` on API
+    responses, graceful shutdown, and LAN URL logging.
+5.  **Tests**: added `node:test` suites for date/time utilities, TTL cache eviction,
+    and query parameterization. `npm test` now runs them.
+
+### Repository hygiene
+- Untracked `server/node_modules` (5,186 files) and stray `*.log` files; expanded
+  `.gitignore` for databases, env files, Expo output, and logs.
+- Removed duplicate/dead scripts (`add_index.js`, `check_indexes.js`,
+  `get_stops_schema.js`, `test-gtfs.js`) and `client_package_backup.json`.
+- Added `client/.env.example`, refreshed `README.md`, `CLAUDE.md`, and
+  `feature_list.json`.
+
+### Keyless native map (follow-up)
+- Android builds reported that `react-native-maps` requires a Google Maps API key.
+  Replaced the native map with **Leaflet running in `react-native-webview`**, using
+  CARTO Positron/Dark Matter raster tiles (OpenStreetMap data, street names, no key).
+- New `client/src/components/map/leafletHtml.js` hosts the map, screen-space stop
+  clustering, vehicle markers/popups, selection fly-to with bottom-sheet offset,
+  user-location dot, and theme swapping.
+- `Map.native.js` now bridges React Native state to the WebView (stops, vehicles,
+  selection, location, theme, viewport) and keeps the native locate/nearest controls.
+- Performance: `updateWhenIdle` tiles, retina disabled, canvas markers, 64px
+  clustering, and only viewport stops are rendered.

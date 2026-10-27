@@ -2,9 +2,13 @@
 module.exports = {
   content: ["./App.{js,jsx,ts,tsx}", "./src/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
+  darkMode: "media",
   theme: {
-    extend: {},
+    extend: {
+      borderRadius: {
+        "4xl": "2rem",
+      },
+    },
   },
   plugins: [],
-}
-
+};

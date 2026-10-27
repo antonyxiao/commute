@@ -1,141 +1,131 @@
-const { queryAll } = require('../db');
+const { getTripsAtStop } = require('../services/gtfsQueries');
 const { fetchWithCache, decodeFeed } = require('../services/realtimeService');
-const { toGTFSDate, parseGTFSDate, getDayName } = require('../utils/dateUtils');
+const { toGTFSDate, isValidGTFSDate } = require('../utils/dateUtils');
+const { TtlCache } = require('../utils/ttlCache');
 const config = require('../../loadConfig');
 
-// Server-side result cache for vehicles
-const vehiclesCache = {};
-const RESULT_CACHE_TTL = 5000; // 5 seconds (matches RT cache)
+const resultCache = new TtlCache({ ttl: 5000, max: 100 });
+const agenciesById = new Map();
+
+for (const agency of config.agencies || []) {
+  for (const id of agency.gtfs_agency_ids || []) {
+    agenciesById.set(String(id), agency);
+  }
+}
+
+function hasUsableUrl(url) {
+  return typeof url === 'string' && url.length > 0 && !url.endsWith('apikey=');
+}
 
 /**
- * Get vehicles for a specific stop.
+ * GET /api/vehicles_for_stop/:stop_id?date=YYYYMMDD
+ * Returns live vehicle positions for trips that serve the stop today.
  */
-async function getVehiclesForStop(req, res) {
-  const { stop_id } = req.params;
-
-  // 1. Determine Date and Day
-  let dateString = req.query.date;
-  if (!dateString) {
-    dateString = toGTFSDate(new Date());
-  }
-
-  const todayString = toGTFSDate(new Date());
-  const isToday = dateString === todayString;
-
-  // Check result cache
-  const cacheKey = `vehicles_${stop_id}_${dateString}`;
-  const now = Date.now();
-  if (isToday && vehiclesCache[cacheKey] && (now - vehiclesCache[cacheKey].timestamp < RESULT_CACHE_TTL)) {
-    return res.json(vehiclesCache[cacheKey].data);
-  }
-
-  const dateObj = parseGTFSDate(dateString);
-  const dayName = getDayName(dateObj);
-
+async function getVehiclesForStop(req, res, next) {
   try {
-    // Get all trips serving this stop for the current date
-    const query = `
-        SELECT
-            t.trip_id,
-            r.route_short_name,
-            r.route_color,
-            r.route_text_color,
-            r.agency_id
-        FROM stop_times st
-        JOIN trips t ON st.trip_id = t.trip_id
-        JOIN routes r ON t.route_id = r.route_id
-        LEFT JOIN calendar c ON t.service_id = c.service_id
-        LEFT JOIN calendar_dates cd ON t.service_id = cd.service_id AND cd.date = ?
-        WHERE st.stop_id = ?
-        AND (
-            (cd.service_id IS NOT NULL AND cd.exception_type = 1)
-            OR
-            (
-                c.service_id IS NOT NULL
-                AND c.start_date <= ? AND c.end_date >= ?
-                AND c.${dayName} = 1
-                AND (cd.service_id IS NULL OR cd.exception_type != 2)
-            )
-        )
-    `;
-    const validTrips = await queryAll(query, [dateString, stop_id, dateString, dateString]);
-
-    // Build lookup map and collect agency IDs in single pass
-    const tripMap = new Map();
-    const foundAgencyIds = new Set();
-
-    for (const t of validTrips) {
-      tripMap.set(t.trip_id, t);
-      foundAgencyIds.add(t.agency_id || "");
+    const { stop_id: stopId } = req.params;
+    if (typeof stopId !== 'string' || stopId.length === 0 || stopId.length > 64) {
+      return res.status(400).json({ error: 'Invalid stop_id' });
     }
 
-    // Identify matching agencies
-    const matchedAgencies = config.agencies.filter(agency =>
-      agency.gtfs_agency_ids?.some(id => foundAgencyIds.has(id))
-    );
+    let dateString = req.query.date;
+    if (dateString && !isValidGTFSDate(dateString)) {
+      return res.status(400).json({ error: 'Invalid date, expected YYYYMMDD' });
+    }
 
-    // Parallel fetch RT data for all agencies
-    const rtResults = await Promise.all(
-      matchedAgencies.map(async (agencyConfig) => {
-        const vehiclePositionsUrl = agencyConfig.realtimeUrls?.vehiclePositions;
-        if (!vehiclePositionsUrl) return null;
+    const todayString = toGTFSDate(new Date());
+    if (!dateString) dateString = todayString;
+
+    const isToday = dateString === todayString;
+    const cacheKey = `${stopId}_${dateString}`;
+
+    if (isToday) {
+      const cached = resultCache.get(cacheKey);
+      if (cached) return res.json(cached);
+    }
+
+    // Vehicles are live data; a future/past schedule has no live positions.
+    if (!isToday) return res.json([]);
+
+    const trips = await getTripsAtStop(stopId, dateString);
+    if (trips.length === 0) return res.json([]);
+
+    const tripMap = new Map();
+    const agencies = new Set();
+
+    for (const trip of trips) {
+      tripMap.set(trip.trip_id, trip);
+      const agency = agenciesById.get(String(trip.agency_id ?? ''));
+      if (agency) agencies.add(agency);
+    }
+
+    const feeds = await Promise.all(
+      [...agencies].map(async (agency) => {
+        const url = agency.realtimeUrls?.vehiclePositions;
+        if (!hasUsableUrl(url)) return null;
 
         try {
-          const buffer = await fetchWithCache(vehiclePositionsUrl, `vehiclePositions_${agencyConfig.agency_key}`);
-          return { agency: agencyConfig, feed: decodeFeed(buffer) };
+          const buffer = await fetchWithCache(url, `vehiclePositions_${agency.agency_key}`);
+          return decodeFeed(buffer);
         } catch (err) {
-          console.error(`Error fetching RT vehicles for ${agencyConfig.agency_key}:`, err.message);
+          console.error(`Realtime vehiclePositions failed for ${agency.agency_key}: ${err.message}`);
           return null;
         }
       })
     );
 
-    // Process all feeds and build vehicles array
     const vehicles = [];
 
-    for (const result of rtResults) {
-      if (!result) continue;
-      const { feed } = result;
+    for (const feed of feeds) {
+      if (!feed) continue;
 
-      for (const entity of feed.entity) {
-        if (!entity.vehicle?.trip?.tripId || !entity.vehicle?.position) continue;
+      for (const entity of feed.entity || []) {
+        const vehicle = entity.vehicle;
+        const tripId = vehicle?.trip?.tripId;
+        const position = vehicle?.position;
+        if (!tripId || !position) continue;
 
-        const tripId = entity.vehicle.trip.tripId;
-        const routeInfo = tripMap.get(tripId);
+        const trip = tripMap.get(tripId);
+        if (!trip) continue;
 
-        if (routeInfo) {
-          vehicles.push({
-            id: entity.id,
-            trip_id: tripId,
-            lat: entity.vehicle.position.latitude,
-            lon: entity.vehicle.position.longitude,
-            bearing: entity.vehicle.position.bearing,
-            speed: entity.vehicle.position.speed,
-            occupancy_status: entity.vehicle.occupancyStatus,
-            congestion_level: entity.vehicle.congestionLevel,
-            current_status: entity.vehicle.currentStatus,
-            stop_id: entity.vehicle.stopId,
-            route_short_name: routeInfo.route_short_name,
-            route_color: routeInfo.route_color || '000000',
-            route_text_color: routeInfo.route_text_color || 'FFFFFF'
-          });
-        }
+        vehicles.push({
+          id: entity.id,
+          vehicle_id: vehicle.vehicle?.id || entity.id,
+          label: vehicle.vehicle?.label || null,
+          trip_id: tripId,
+          lat: position.latitude,
+          lon: position.longitude,
+          bearing: position.bearing ?? null,
+          speed: position.speed ?? null,
+          odometer: position.odometer ?? null,
+          occupancy_status: vehicle.occupancyStatus ?? null,
+          congestion_level: vehicle.congestionLevel ?? null,
+          current_status: vehicle.currentStatus ?? null,
+          stop_id: vehicle.stopId || null,
+          current_stop_sequence: vehicle.currentStopSequence ?? null,
+          timestamp: vehicle.timestamp ?? null,
+          route_short_name: trip.route_short_name,
+          route_long_name: trip.route_long_name || null,
+          route_color: trip.route_color || '2563EB',
+          route_text_color: trip.route_text_color || 'FFFFFF',
+          route_type: trip.route_type ?? null,
+          trip_headsign: trip.trip_headsign || null,
+          direction_id: trip.direction_id ?? null,
+          agency_id: trip.agency_id ?? null,
+        });
       }
     }
 
-    // Cache result
     if (isToday) {
-      vehiclesCache[cacheKey] = { data: vehicles, timestamp: Date.now() };
+      resultCache.set(cacheKey, vehicles);
     }
 
     res.json(vehicles);
-
   } catch (err) {
-    console.error('Error fetching vehicles endpoint:', err);
-    res.status(500).json({ error: 'Failed to fetch vehicles' });
+    next(err);
   }
 }
 
 module.exports = {
-  getVehiclesForStop
+  getVehiclesForStop,
 };

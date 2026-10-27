@@ -1,0 +1,16 @@
+{
+  "name": "commute",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time transit for Victoria BC (Expo client + Express/SQLite server)",
+  "scripts": {
+    "server": "npm --prefix server start",
+    "client": "npm --prefix client start",
+    "test": "npm --prefix server test",
+    "import-gtfs": "npm --prefix server run import-gtfs",
+    "add-indexes": "npm --prefix server run add-indexes"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

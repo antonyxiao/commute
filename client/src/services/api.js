@@ -1,75 +1,109 @@
 import { API_BASE_URL } from '../constants/config';
 
-/**
- * Generic fetch wrapper to handle errors and headers.
- * @param {string} endpoint - The API endpoint (e.g., '/api/stops').
- * @param {Object} options - Fetch options.
- * @returns {Promise<any>} The response data.
- */
-async function fetchApi(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
-    'ngrok-skip-browser-warning': 'true',
-    ...options.headers,
-  };
+const DEFAULT_TIMEOUT = 15000;
+
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+function toGTFSDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+async function request(endpoint, options = {}) {
+  const { signal, timeout = DEFAULT_TIMEOUT, query, ...fetchOptions } = options;
+  const params = [];
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value !== undefined && value !== null) {
+      params.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+    }
+  }
+  params.push(`ts=${Date.now()}`);
+  const url = `${API_BASE_URL}${endpoint}?${params.join('&')}`;
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeout);
+
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener('abort', onExternalAbort);
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...fetchOptions.headers,
+      },
+    });
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new ApiError(`Request failed with status ${response.status}`, response.status);
     }
+
     return await response.json();
   } catch (error) {
-    console.error(`Fetch error for ${endpoint}:`, error);
-    throw error;
+    if (error.name === 'AbortError') {
+      if (timedOut) throw new ApiError('The server took too long to respond.');
+      throw error;
+    }
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('Could not reach the transit server.');
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
 /**
  * Fetch stops within a bounding box.
- * @param {Object} bounds - { north, east, south, west }
+ * @param {{north:number,east:number,south:number,west:number}} bounds
+ * @param {{signal?: AbortSignal}} [options]
  */
-export async function fetchStopsInBounds(bounds) {
-  const { north, east, south, west } = bounds;
-  return fetchApi(`/api/stops_in_bounds?north=${north}&east=${east}&south=${south}&west=${west}`);
+export function fetchStopsInBounds(bounds, options = {}) {
+  return request('/api/stops_in_bounds', {
+    ...options,
+    query: bounds,
+  });
 }
 
 /**
- * Fetch stop times for a specific stop.
- * @param {string} stopId 
- * @param {Date} [date] 
- * @returns {Promise<Array>}
+ * Fetch arrivals for a stop, optionally for a future date.
+ * @param {string} stopId
+ * @param {Date|null} date
+ * @param {{signal?: AbortSignal}} [options]
  */
-export async function fetchStopTimes(stopId, date) {
-    const queryParams = [];
-    if (date) {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        queryParams.push(`date=${y}${m}${d}`);
-    }
-    queryParams.push(`ts=${Date.now()}`); // Cache buster
-    const queryString = queryParams.length ? `?${queryParams.join('&')}` : '';
-    
-    return fetchApi(`/api/stop_times/${stopId}${queryString}`);
+export function fetchStopTimes(stopId, date, { after, ...options } = {}) {
+  return request(`/api/stop_times/${encodeURIComponent(stopId)}`, {
+    ...options,
+    query: {
+      ...(date ? { date: toGTFSDate(date) } : {}),
+      ...(after ? { after } : {}),
+    },
+  });
 }
 
 /**
- * Fetch vehicles for a specific stop.
- * @param {string} stopId 
- * @param {Date} [date] 
- * @returns {Promise<Array>}
+ * Fetch live vehicle positions for trips serving a stop.
+ * @param {string} stopId
+ * @param {Date|null} date
+ * @param {{signal?: AbortSignal}} [options]
  */
-export async function fetchVehiclesForStop(stopId, date) {
-    const queryParams = [];
-    if (date) {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        queryParams.push(`date=${y}${m}${d}`);
-    }
-    queryParams.push(`ts=${Date.now()}`); // Cache buster
-    const queryString = queryParams.length ? `?${queryParams.join('&')}` : '';
-
-    return fetchApi(`/api/vehicles_for_stop/${stopId}${queryString}`);
+export function fetchVehiclesForStop(stopId, date, options = {}) {
+  return request(`/api/vehicles_for_stop/${encodeURIComponent(stopId)}`, {
+    ...options,
+    query: date ? { date: toGTFSDate(date) } : undefined,
+  });
 }

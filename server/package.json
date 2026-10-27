@@ -4,7 +4,13 @@
   "description": "Server for the transit app.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test",
+    "import-gtfs": "node import-gtfs.js",
+    "add-indexes": "node add-indexes.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "axios": "^1.13.2",

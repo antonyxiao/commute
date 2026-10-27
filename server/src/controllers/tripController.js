@@ -1,237 +1,304 @@
-const { queryAll } = require('../db');
+const { getTripsAtStop } = require('../services/gtfsQueries');
 const { fetchWithCache, decodeFeed } = require('../services/realtimeService');
-const { toGTFSDate, parseGTFSDate, getDayName, timeToMinutes, formatGTFSTime, formatTimestamp } = require('../utils/dateUtils');
+const {
+  toGTFSDate,
+  isValidGTFSDate,
+  timeToMinutes,
+  minutesToClock,
+  formatGTFSTime,
+  getNowMinutesInTimeZone,
+  formatTimestamp,
+} = require('../utils/dateUtils');
+const { TtlCache } = require('../utils/ttlCache');
 const config = require('../../loadConfig');
 
-// Server-side result cache for stop times
-const stopTimesCache = {};
-const RESULT_CACHE_TTL = 10000; // 10 seconds
+const MAX_ARRIVALS = 150;
+const PAST_GRACE_MINUTES = 15;
+
+// GTFS-RT schedule_relationship values
+const TRIP_SCHEDULED = 0;
+const TRIP_ADDED = 1;
+const TRIP_UNSCHEDULED = 2;
+const TRIP_CANCELED = 3;
+
+// GTFS-RT stop_time_update schedule_relationship values
+const STOP_SCHEDULED = 0;
+const STOP_SKIPPED = 1;
+
+const resultCache = new TtlCache({ ttl: 5000, max: 100 });
+const agenciesById = new Map();
+
+for (const agency of config.agencies || []) {
+  for (const id of agency.gtfs_agency_ids || []) {
+    agenciesById.set(String(id), agency);
+  }
+}
+
+function isValidStopId(stopId) {
+  return typeof stopId === 'string' && stopId.length > 0 && stopId.length <= 64;
+}
+
+function hasUsableUrl(url) {
+  return typeof url === 'string' && url.length > 0 && !url.endsWith('apikey=');
+}
 
 /**
- * Get stop times for a specific stop, optionally merging with real-time data.
+ * Parses an `after=HH:MM` filter.
+ * @returns {number|null|undefined} minutes, null when absent, undefined when invalid.
  */
-async function getStopTimes(req, res) {
-  const { stop_id } = req.params;
+function parseAfter(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{1,2}:\d{2}$/.test(value)) return undefined;
+  const [hours, minutes] = value.split(':').map(Number);
+  if (hours > 23 || minutes > 59) return undefined;
+  return hours * 60 + minutes;
+}
 
-  // 1. Determine Date and Day
-  let dateString = req.query.date;
-  if (!dateString) {
-    dateString = toGTFSDate(new Date());
+function agenciesForRows(rows) {
+  const found = new Set();
+  for (const row of rows) {
+    const agency = agenciesById.get(String(row.agency_id ?? ''));
+    if (agency) found.add(agency);
   }
+  return [...found];
+}
 
-  const todayString = toGTFSDate(new Date());
-  const isToday = dateString === todayString;
+function readStopTime(update) {
+  return update?.arrival || update?.departure || null;
+}
 
-  // Check result cache for today's data
-  const cacheKey = `${stop_id}_${dateString}`;
-  const now = Date.now();
-  if (isToday && stopTimesCache[cacheKey] && (now - stopTimesCache[cacheKey].timestamp < RESULT_CACHE_TTL)) {
-    return res.json(stopTimesCache[cacheKey].data);
-  }
+/**
+ * Converts a GTFS-RT stop time (absolute timestamp or delay) into minutes.
+ * @returns {{ minutes: number|null, delaySeconds: number|null }}
+ */
+function resolveRealtimeMinutes(stopTime, scheduledMinutes) {
+  if (!stopTime) return { minutes: null, delaySeconds: null };
 
-  const dateObj = parseGTFSDate(dateString);
-  const dayName = getDayName(dateObj);
+  if (stopTime.time) {
+    const timestamp = typeof stopTime.time === 'number'
+      ? stopTime.time
+      : stopTime.time.low || Number(stopTime.time);
+    if (!timestamp) return { minutes: null, delaySeconds: null };
 
-  let rows = [];
-  try {
-    // Optimized query with all needed fields
-    const query = `
-        SELECT
-            t.trip_id,
-            t.service_id,
-            t.direction_id,
-            t.trip_headsign,
-            r.route_short_name,
-            r.route_color,
-            r.route_text_color,
-            r.agency_id,
-            st.arrival_time,
-            st.departure_time,
-            st.stop_headsign
-        FROM stop_times st
-        JOIN trips t ON st.trip_id = t.trip_id
-        JOIN routes r ON t.route_id = r.route_id
-        LEFT JOIN calendar c ON t.service_id = c.service_id
-        LEFT JOIN calendar_dates cd ON t.service_id = cd.service_id AND cd.date = ?
-        WHERE st.stop_id = ?
-        AND (
-            (cd.service_id IS NOT NULL AND cd.exception_type = 1)
-            OR
-            (
-                c.service_id IS NOT NULL
-                AND c.start_date <= ? AND c.end_date >= ?
-                AND c.${dayName} = 1
-                AND (cd.service_id IS NULL OR cd.exception_type != 2)
-            )
-        )
-        ORDER BY st.arrival_time
-      `;
+    let minutes = timeToMinutes(formatTimestamp(timestamp));
+    if (minutes < 0) return { minutes: null, delaySeconds: null };
 
-    rows = await queryAll(query, [dateString, stop_id, dateString, dateString]);
-
-  } catch (err) {
-    console.error('Error fetching static stop times:', err);
-    return res.status(500).json({ error: 'Failed to fetch stop times' });
-  }
-
-  // 2. Fetch Real-time Updates (only if querying for today)
-  if (isToday) {
-    try {
-      // Identify relevant agencies from the rows
-      const agencySet = new Set();
-      for (const row of rows) {
-        const safeId = row.agency_id || "";
-        const agency = config.agencies.find(a => a.gtfs_agency_ids?.includes(safeId));
-        if (agency) agencySet.add(agency);
-      }
-      const relevantAgencies = [...agencySet];
-
-      // Parallel fetch RT data for all agencies
-      const rtResults = await Promise.all(
-        relevantAgencies.map(async (agency) => {
-          const tripUpdatesUrl = agency.realtimeUrls?.tripUpdates;
-          if (!tripUpdatesUrl) return null;
-
-          try {
-            const buffer = await fetchWithCache(tripUpdatesUrl, `tripUpdates_${agency.agency_key}`);
-            return { agency, feed: decodeFeed(buffer) };
-          } catch (err) {
-            console.error(`Error fetching RT for agency ${agency.agency_key}:`, err.message);
-            return null;
-          }
-        })
-      );
-
-      // Build RT lookup map and collect added trips in single pass
-      const rtMap = new Map();
-      const addedTrips = [];
-
-      for (const result of rtResults) {
-        if (!result) continue;
-        const { feed } = result;
-
-        for (const entity of feed.entity) {
-          if (!entity.tripUpdate?.trip) continue;
-
-          const tripUpdate = entity.tripUpdate;
-          const tripId = tripUpdate.trip.tripId;
-          const scheduleRelationship = tripUpdate.trip.scheduleRelationship;
-
-          if (scheduleRelationship === 3) { // CANCELED
-            rtMap.set(tripId, { status: 'CANCELED' });
-            continue;
-          }
-
-          const stopUpdate = tripUpdate.stopTimeUpdate?.find(u => u.stopId == stop_id);
-          if (!stopUpdate) continue;
-
-          if (stopUpdate.scheduleRelationship === 1) { // SKIPPED
-            rtMap.set(tripId, { status: 'SKIPPED' });
-          } else if (scheduleRelationship === 1 || scheduleRelationship === 2) {
-            // ADDED or UNSCHEDULED
-            addedTrips.push({
-              tripId,
-              stopUpdate,
-              status: scheduleRelationship === 1 ? 'ADDED' : 'UNSCHEDULED'
-            });
-          } else {
-            rtMap.set(tripId, { status: 'SCHEDULED', stopUpdate });
-          }
-        }
-      }
-
-      // Process added trips
-      for (const added of addedTrips) {
-        const update = added.stopUpdate;
-        let rtTime = null;
-
-        if (update.arrival?.time) {
-          const timestamp = update.arrival.time.low || update.arrival.time;
-          rtTime = formatTimestamp(timestamp);
-        }
-
-        if (rtTime) {
-          rows.push({
-            trip_id: added.tripId,
-            route_short_name: 'Add',
-            route_color: '000000',
-            route_text_color: 'FFFFFF',
-            trip_headsign: 'Added Service',
-            arrival_time: rtTime,
-            departure_time: rtTime,
-            real_time_arrival: formatGTFSTime(rtTime),
-            status: added.status,
-            is_added: true
-          });
-        }
-      }
-
-      // Single-pass enrichment and transformation
-      rows = rows.map(row => {
-        let sortTime = timeToMinutes(row.arrival_time);
-        let rtTime = null;
-        let status = row.is_added ? row.status : 'SCHEDULED';
-
-        const rtData = rtMap.get(row.trip_id);
-        if (rtData) {
-          status = rtData.status;
-
-          if (rtData.stopUpdate) {
-            const stopUpdate = rtData.stopUpdate;
-            if (stopUpdate.arrival?.time) {
-              const timestamp = stopUpdate.arrival.time.low || stopUpdate.arrival.time;
-              rtTime = formatTimestamp(timestamp);
-            } else if (stopUpdate.arrival?.delay) {
-              const delaySeconds = stopUpdate.arrival.delay;
-              const [hh, mm, ss] = row.arrival_time.split(':').map(Number);
-              const arrivalDate = new Date();
-              arrivalDate.setHours(hh, mm, ss || 0, 0);
-              arrivalDate.setSeconds(arrivalDate.getSeconds() + delaySeconds);
-              rtTime = formatTimestamp(Math.floor(arrivalDate.getTime() / 1000));
-            }
-
-            if (rtTime) {
-              let rtMinutes = timeToMinutes(rtTime);
-              const scheduledMinutes = timeToMinutes(row.arrival_time);
-              // Handle midnight crossover
-              if (Math.abs(rtMinutes - scheduledMinutes) > 720) {
-                rtMinutes += rtMinutes < scheduledMinutes ? 1440 : -1440;
-              }
-              sortTime = rtMinutes;
-            }
-          }
-        }
-
-        return {
-          ...row,
-          arrival_time: formatGTFSTime(row.arrival_time),
-          departure_time: formatGTFSTime(row.departure_time),
-          real_time_arrival: rtTime ? formatGTFSTime(rtTime) : null,
-          sortTime,
-          status
-        };
-      });
-
-      rows.sort((a, b) => a.sortTime - b.sortTime);
-
-      // Cache result
-      stopTimesCache[cacheKey] = { data: rows, timestamp: Date.now() };
-
-    } catch (rtErr) {
-      console.error('Error fetching/parsing real-time updates:', rtErr);
+    // Midnight crossover: snap the realtime clock to the scheduled service day.
+    if (Math.abs(minutes - scheduledMinutes) > 720) {
+      minutes += minutes < scheduledMinutes ? 1440 : -1440;
     }
-  } else {
-    // For non-today dates, just format times
-    rows = rows.map(row => ({
+    return { minutes, delaySeconds: null };
+  }
+
+  if (typeof stopTime.delay === 'number') {
+    return {
+      minutes: scheduledMinutes + stopTime.delay / 60,
+      delaySeconds: stopTime.delay,
+    };
+  }
+
+  return { minutes: null, delaySeconds: null };
+}
+
+/**
+ * GET /api/stop_times/:stop_id?date=YYYYMMDD
+ * Returns scheduled arrivals for a stop, enriched with realtime updates.
+ */
+async function getStopTimes(req, res, next) {
+  try {
+    const { stop_id: stopId } = req.params;
+    if (!isValidStopId(stopId)) {
+      return res.status(400).json({ error: 'Invalid stop_id' });
+    }
+
+    let dateString = req.query.date;
+    if (dateString && !isValidGTFSDate(dateString)) {
+      return res.status(400).json({ error: 'Invalid date, expected YYYYMMDD' });
+    }
+
+    const afterMinutes = parseAfter(req.query.after);
+    if (afterMinutes === undefined) {
+      return res.status(400).json({ error: 'Invalid after, expected HH:MM' });
+    }
+
+    const todayString = toGTFSDate(new Date());
+    if (!dateString) dateString = todayString;
+
+    const isToday = dateString === todayString;
+    const cacheKey = `${stopId}_${dateString}_${afterMinutes ?? 'auto'}`;
+
+    if (isToday) {
+      const cached = resultCache.get(cacheKey);
+      if (cached) return res.json(cached);
+    }
+
+    const rows = await getTripsAtStop(stopId, dateString);
+    let arrivals = rows.map((row) => ({
       ...row,
       arrival_time: formatGTFSTime(row.arrival_time),
-      departure_time: formatGTFSTime(row.departure_time)
+      departure_time: formatGTFSTime(row.departure_time),
+      real_time_arrival: null,
+      delay_minutes: null,
+      is_realtime: false,
+      sortTime: timeToMinutes(row.arrival_time || row.departure_time),
+      status: 'SCHEDULED',
     }));
+
+    if (isToday) {
+      arrivals = await mergeRealtime(stopId, arrivals);
+    }
+
+    arrivals.sort((a, b) => a.sortTime - b.sortTime);
+
+    // Only ship a useful window instead of every departure of the day.
+    const threshold =
+      afterMinutes ??
+      (isToday ? getNowMinutesInTimeZone() - PAST_GRACE_MINUTES : 0);
+
+    arrivals = arrivals
+      .filter((arrival) => arrival.sortTime >= threshold)
+      .slice(0, MAX_ARRIVALS);
+
+    if (isToday) {
+      resultCache.set(cacheKey, arrivals);
+    }
+
+    res.json(arrivals);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function mergeRealtime(stopId, arrivals) {
+  const agencies = agenciesForRows(arrivals);
+  if (agencies.length === 0) return arrivals;
+
+  const feeds = await Promise.all(
+    agencies.map(async (agency) => {
+      const url = agency.realtimeUrls?.tripUpdates;
+      if (!hasUsableUrl(url)) return null;
+
+      try {
+        const buffer = await fetchWithCache(url, `tripUpdates_${agency.agency_key}`);
+        return decodeFeed(buffer);
+      } catch (err) {
+        console.error(`Realtime tripUpdates failed for ${agency.agency_key}: ${err.message}`);
+        return null;
+      }
+    })
+  );
+
+  const rtByTrip = new Map();
+  const addedTrips = [];
+
+  for (const feed of feeds) {
+    if (!feed) continue;
+
+    for (const entity of feed.entity || []) {
+      const tripUpdate = entity.tripUpdate;
+      if (!tripUpdate?.trip?.tripId) continue;
+
+      const tripId = tripUpdate.trip.tripId;
+      const scheduleRelationship = tripUpdate.trip.scheduleRelationship ?? TRIP_SCHEDULED;
+
+      if (scheduleRelationship === TRIP_CANCELED) {
+        rtByTrip.set(tripId, { status: 'CANCELED' });
+        continue;
+      }
+
+      const stopUpdate = (tripUpdate.stopTimeUpdate || []).find(
+        (update) => String(update.stopId) === String(stopId)
+      );
+      if (!stopUpdate) continue;
+
+      if (stopUpdate.scheduleRelationship === STOP_SKIPPED) {
+        rtByTrip.set(tripId, { status: 'SKIPPED' });
+        continue;
+      }
+
+      if (
+        scheduleRelationship === TRIP_ADDED ||
+        scheduleRelationship === TRIP_UNSCHEDULED
+      ) {
+        addedTrips.push({
+          tripId,
+          stopUpdate,
+          status: scheduleRelationship === TRIP_ADDED ? 'ADDED' : 'UNSCHEDULED',
+        });
+        continue;
+      }
+
+      if (stopUpdate.scheduleRelationship === STOP_SCHEDULED || stopUpdate.scheduleRelationship == null) {
+        rtByTrip.set(tripId, { status: 'SCHEDULED', stopUpdate });
+      }
+    }
   }
 
-  res.json(rows);
+  const enriched = arrivals.map((arrival) => {
+    const update = rtByTrip.get(arrival.trip_id);
+    if (!update) return arrival;
+
+    if (update.status !== 'SCHEDULED') {
+      return { ...arrival, status: update.status };
+    }
+
+    const { minutes, delaySeconds } = resolveRealtimeMinutes(
+      readStopTime(update.stopUpdate),
+      arrival.sortTime
+    );
+    if (minutes == null) {
+      return { ...arrival, is_realtime: true };
+    }
+
+    return {
+      ...arrival,
+      real_time_arrival: minutesToClock(minutes),
+      delay_minutes: delaySeconds == null ? Math.round(minutes - arrival.sortTime) : Math.round(delaySeconds / 60),
+      is_realtime: true,
+      sortTime: minutes,
+    };
+  });
+
+  for (const added of addedTrips) {
+    const stopTime = readStopTime(added.stopUpdate);
+    if (!stopTime) continue;
+
+    let minutes = null;
+    if (stopTime.time) {
+      const timestamp = typeof stopTime.time === 'number'
+        ? stopTime.time
+        : stopTime.time.low || Number(stopTime.time);
+      if (timestamp) minutes = timeToMinutes(formatTimestamp(timestamp));
+    }
+
+    if (minutes == null) continue;
+
+    enriched.push({
+      trip_id: added.tripId,
+      service_id: null,
+      direction_id: null,
+      trip_headsign: 'Added service',
+      route_short_name: 'ADD',
+      route_long_name: 'Added service',
+      route_color: '059669',
+      route_text_color: 'FFFFFF',
+      route_type: 3,
+      agency_id: null,
+      arrival_time: null,
+      departure_time: null,
+      stop_headsign: null,
+      stop_sequence: null,
+      real_time_arrival: minutesToClock(minutes),
+      delay_minutes: null,
+      is_realtime: true,
+      sortTime: minutes,
+      status: added.status,
+    });
+  }
+
+  return enriched;
 }
 
 module.exports = {
-  getStopTimes
+  getStopTimes,
 };

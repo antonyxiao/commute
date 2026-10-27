@@ -1,65 +1,20 @@
 {
   "features": [
-    {
-      "name": "Setup Express server",
-      "status": "completed"
-    },
-    {
-      "name": "Setup SQLite database",
-      "status": "completed"
-    },
-    {
-      "name": "Import GTFS Data",
-      "status": "completed"
-    },
-    {
-      "name": "Create API endpoint for stops",
-      "status": "completed"
-    },
-    {
-      "name": "Create API endpoint for arrival times",
-      "status": "completed"
-    },
-    {
-      "name": "Initialize React Native Expo project",
-      "status": "completed"
-    },
-    {
-      "name": "Setup NativeWind",
-      "status": "completed"
-    },
-    {
-      "name": "Create Map View with react-leaflet",
-      "status": "completed"
-    },
-    {
-      "name": "Create Stop Card component",
-      "status": "completed"
-    },
-    {
-      "name": "Implement Swipe Card for direction switching",
-      "status": "completed"
-    },
-    {
-      "name": "Fetch and display stops on the map",
-      "status": "completed"
-    },
-    {
-      "name": "Fetch and display arrival times on stop card",
-      "status": "completed"
-    },
-    {
-      "name": "Improve map and app performance",
-      "status": "completed"
-    },
-    {
-      "name": "Fix bus stop asset image display",
-      "status": "completed"
-    },
-    {
-      "name": "Switch to Victoria BC Transit GTFS data",
-      "status": "completed"
-    },
+    { "name": "Setup Express server", "status": "completed" },
+    { "name": "Setup SQLite database", "status": "completed" },
+    { "name": "Import GTFS Data", "status": "completed" },
+    { "name": "Create API endpoint for stops", "status": "completed" },
+    { "name": "Create API endpoint for arrival times", "status": "completed" },
+    { "name": "Initialize React Native Expo project", "status": "completed" },
+    { "name": "Setup NativeWind", "status": "completed" },
+    { "name": "Create Map View with react-leaflet", "status": "completed" },
+    { "name": "Create Stop Card component", "status": "completed" },
+    { "name": "Implement Swipe Card for direction switching", "status": "completed" },
+    { "name": "Fetch and display stops on the map", "status": "completed" },
+    { "name": "Fetch and display arrival times on stop card", "status": "completed" },
+    { "name": "Improve map and app performance", "status": "completed" },
+    { "name": "Fix bus stop asset image display", "status": "completed" },
+    { "name": "Switch to Victoria BC Transit GTFS data", "status": "completed" },
     {
       "name": "Hide direction selector if only one direction exists for a stop",
       "status": "completed"
@@ -90,13 +45,17 @@
       "status": "completed"
     },
     {
-      "name": "Incorporate realtime bus position, trip updates, and alerts",
-      "description": "Show buses moving on map with bus number on logo, oriented in correct direction.",
+      "name": "Realtime vehicle positions and trip updates",
+      "description": "Show buses moving on the map with route badges, direction-aware trip updates, delay and cancellation states.",
+      "status": "completed"
+    },
+    {
+      "name": "GTFS-Realtime service alerts",
+      "description": "Surface service alerts (planned detours/cancellations) in the stop card.",
       "status": "pending"
     },
     {
       "name": "Replace deprecated SafeAreaView",
-      "description": "Replace 'SafeAreaView' from 'react-native' with 'SafeAreaView' from 'react-native-safe-area-context'.",
       "status": "completed"
     },
     {
@@ -127,7 +86,32 @@
     {
       "name": "Draggable/Collapsible Stop Card",
       "description": "Allow the user to drag the stop card down to a 'collapsed' state showing only the stop name, and drag up to expand.",
-      "status": "cancelled"
+      "status": "completed"
+    },
+    {
+      "name": "Native mobile map",
+      "description": "Render the map on iOS and Android with a keyless Leaflet/WebView map, OSM/CARTO raster tiles, and client-side stop clustering.",
+      "status": "completed"
+    },
+    {
+      "name": "Adaptive light/dark redesign",
+      "description": "System-adaptive theme across the map, controls, arrivals sheet, picker, and states.",
+      "status": "completed"
+    },
+    {
+      "name": "Resilient data layer",
+      "description": "Abort stale requests, request timeouts, foreground-only polling, retry banners, and a friendly empty state.",
+      "status": "completed"
+    },
+    {
+      "name": "Automatic API host detection",
+      "description": "Derive the API host from the Expo dev server on devices and the browser host on web; allow EXPO_PUBLIC_API_URL override.",
+      "status": "completed"
+    },
+    {
+      "name": "Server hardening and tests",
+      "description": "Shared parameterized GTFS queries, bounded TTL caches, input validation, timezone-correct service days, and node:test coverage.",
+      "status": "completed"
     }
   ]
 }
